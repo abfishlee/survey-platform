@@ -6,7 +6,7 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, HttpResponse
 # SurveyRoster 모델 임포트 추가
-from .models import SurveyMaster, SurveyDesign, SurveyData, SurveyRoster
+from .models import SurveyMaster, SurveyDesign, SurveyData, SurveyRoster, SurveyQuestionnaire
 
 # 1. 권한 체크 함수
 def is_admin(user):
@@ -230,6 +230,7 @@ def save_questionnaire_design(request, q_id):
     questionnaire = get_object_or_404(SurveyQuestionnaire, pk=q_id)
     if request.method == 'POST':
         data = json.loads(request.body)
+        # 만약 design_data가 없으면 빈 리스트([])로 저장하도록 기본값 보강
         questionnaire.design_data = data.get('design_data', [])
         questionnaire.save()
         return JsonResponse({'status': 'success', 'message': '조사표 설계가 저장되었습니다.'})

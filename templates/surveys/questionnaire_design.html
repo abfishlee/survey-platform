@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load survey_tags %}
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -31,7 +32,13 @@
                             <small class="text-muted">{{ r.roster_name }}</small><br>
                             <strong>{{ q.form_name }}</strong> ({{ q.form_id }})
                         </div>
-                        <button class="btn btn-primary btn-sm" onclick='openDesignModal({{ q.id }}, "{{ q.form_name }}", {{ q.design_data|safe|default:"[]" }})'>조사표설계</button>
+                        <button class="btn btn-primary btn-sm btn-design" 
+                                data-id="{{ q.id }}" 
+                                data-name="{{ q.form_name }}" 
+                                data-design='{{ q.design_data|json_encode|safe }}'
+                                onclick="prepareDesign(this)">
+                            조사표설계
+                        </button>
                     </div>
                     {% endfor %}
                 {% endfor %}
@@ -79,6 +86,13 @@
 <script>
 let currentQId = null;
 let currentDesign = [];
+
+function prepareDesign(btn) {
+    const id = btn.dataset.id;
+    const name = btn.dataset.name;
+    const designData = JSON.parse(btn.dataset.design || '[]');
+    openDesignModal(id, name, designData);
+}
 
 async function createQuestionnaire() {
     const rosterId = document.getElementById('rosterSelect').value;
@@ -169,7 +183,12 @@ async function saveDesign() {
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
         body: JSON.stringify({ design_data: currentDesign })
     });
-    if(res.ok) alert('설계가 저장되었습니다.');
+    if(res.ok) {
+        alert('설계가 저장되었습니다.');
+        location.reload(); // 저장 후 새로고침하여 최신 정보 반영
+    } else {
+        alert('저장에 실패했습니다.');
+    }
 }
 </script>
 {% endblock %}

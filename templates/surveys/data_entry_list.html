@@ -2,31 +2,78 @@
 {% load survey_tags %}
 
 {% block content %}
-<tbody>
-    {% for data in data_list %}
-    <tr>
-        <td><code>{{ data.respondent_id }}</code></td>
-        {% for h in headers %}
-        <td>{{ data.list_values|dict_get:h.id }}</td>
-        {% endfor %}
-        <td><span class="badge bg-info text-dark" id="status-{{ data.id }}">{{ data.status }}</span></td>
-        <td>
-            <button class="btn btn-primary btn-sm" onclick="openSurveyPopup({{ data.id }})">입력하기</button>
-        </td>
-    </tr>
-    {% endfor %}
-</tbody>
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'collection_list' %}">조사목록</a></li>
+            <li class="breadcrumb-item active">{{ roster.roster_name }}</li>
+        </ol>
+    </nav>
+
+    <h3>{{ roster.roster_name }} 데이터 리스트</h3>
+
+    {% if search_fields %}
+    <div class="card mb-4 bg-light border-0 shadow-sm">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                {% for field in search_fields %}
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">{{ field.label }}</label>
+                    <input type="text" name="{{ field.id }}" class="form-control form-control-sm" value="{{ request.GET|dict_get:field.id }}">
+                </div>
+                {% endfor %}
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark btn-sm w-100">조회</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th>레코드ID</th>
+                        {% for h in headers %}
+                        <th>{{ h.label }}</th>
+                        {% endfor %}
+                        <th>상태</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in data_list %}
+                    <tr>
+                        <td><code>{{ data.respondent_id }}</code></td>
+                        {% for h in headers %}
+                        <td>{{ data.list_values|dict_get:h.id }}</td>
+                        {% endfor %}
+                        <td><span class="badge bg-info text-dark" id="status-{{ data.id }}">{{ data.status }}</span></td>
+                        <td>
+                            <button class="btn btn-primary btn-sm" onclick="openSurveyPopup({{ data.id }})">입력하기</button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="100" class="py-4 text-muted">데이터가 없습니다.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 
 <div class="modal fade" id="entryModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="entryFormTitle">조사표 입력</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body bg-light" id="entry-container" style="max-height: 70vh; overflow-y: auto;">
+            <div class="modal-body bg-light" id="entry-container">
                 </div>
-            <div class="modal-footer">
+            <div class="modal-footer bg-white">
                 <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
                 <button class="btn btn-success" onclick="submitSurveyData()">입력 완료 저장</button>
             </div>
@@ -39,51 +86,47 @@ let activeDataId = null;
 
 async function openSurveyPopup(dataId) {
     activeDataId = dataId;
-    const response = await fetch(`/data/${dataId}/get-survey/`);
-    const data = await response.json();
-
+    const res = await fetch(`/data/${dataId}/get-survey/`);
+    const data = await res.json();
+    
     if(data.status === 'error') return alert(data.message);
 
     document.getElementById('entryFormTitle').innerText = data.form_name;
     const container = document.getElementById('entry-container');
     container.innerHTML = '';
 
-    // 설계 정보(Q)를 바탕으로 입력 폼(A) 렌더링
-    data.design_data.forEach((q, idx) => {
-        const savedVal = data.saved_values[q.id] || ''; // 기존 저장값 확인
-        
-        let inputHtml = '';
-        if(q.type === 'radio') {
-            const opts = q.options.split(',').map(o => o.trim());
-            inputHtml = opts.map(o => `
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input answer-input" type="radio" name="${q.id}" value="${o}" ${savedVal === o ? 'checked' : ''}>
-                    <label class="form-check-label">${o}</label>
-                </div>`).join('');
-        } else if(q.type === 'number') {
-            inputHtml = `<input type="number" class="form-control answer-input" data-id="${q.id}" value="${savedVal}">`;
-        } else {
-            inputHtml = `<input type="text" class="form-control answer-input" data-id="${q.id}" value="${savedVal}">`;
-        }
+    if (!data.design_data || data.design_data.length === 0) {
+        container.innerHTML = '<p class="text-center p-5 text-muted">설계된 문항이 없습니다.</p>';
+    } else {
+        data.design_data.forEach((q, idx) => {
+            const savedVal = data.saved_values[q.id] || '';
+            let inputHtml = '';
+            
+            if(q.type === 'radio') {
+                const opts = q.options ? q.options.split(',') : [];
+                inputHtml = opts.map(o => `
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input answer-input" type="radio" name="${q.id}" value="${o.trim()}" ${savedVal == o.trim() ? 'checked' : ''}>
+                        <label class="form-check-label">${o.trim()}</label>
+                    </div>`).join('');
+            } else {
+                inputHtml = `<input type="text" class="form-control answer-input" data-id="${q.id}" value="${savedVal}">`;
+            }
 
-        const section = `
-            <div class="card mb-3 border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="fw-bold mb-2">Q${idx + 1}. ${q.label}</div> <div class="p-2 bg-white rounded border">
-                        <small class="text-muted d-block mb-1">A${idx + 1}. 답변</small>
-                        ${inputHtml}
+            container.insertAdjacentHTML('beforeend', `
+                <div class="card mb-3 border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="fw-bold mb-2">Q${idx+1}. ${q.label}</div>
+                        <div class="mt-2 p-2 border-top">${inputHtml}</div>
                     </div>
-                </div>
-            </div>`;
-        container.insertAdjacentHTML('beforeend', section);
-    });
-
+                </div>`);
+        });
+    }
     new bootstrap.Modal(document.getElementById('entryModal')).show();
 }
 
 async function submitSurveyData() {
     const answers = {};
-    // 모든 입력 필드 값 수집
     document.querySelectorAll('.answer-input').forEach(input => {
         if(input.type === 'radio') {
             if(input.checked) answers[input.name] = input.value;
@@ -98,8 +141,7 @@ async function submitSurveyData() {
         body: JSON.stringify({ answers: answers })
     });
     
-    const result = await response.json();
-    if(result.status === 'success') {
+    if((await response.json()).status === 'success') {
         alert('저장되었습니다.');
         document.getElementById(`status-${activeDataId}`).innerText = 'ING';
         bootstrap.Modal.getInstance(document.getElementById('entryModal')).hide();

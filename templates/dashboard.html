@@ -1,0 +1,20 @@
+<h2>통계 조사 시스템 대시보드</h2>
+
+<div style="background: #f0f0f0; padding: 10px; border: 1px solid #ccc;">
+    접속 아이디: <b>{{ user.username }}</b> <br>
+    최고관리자 여부: {{ user.is_superuser }} <br>
+    전달된 관리자 권한(is_admin): <b>{{ is_admin }}</b>
+</div>
+
+<hr>
+
+<ul>
+    <li><a href="#">3. 자료수집영역 (명부 및 조사표 입력)</a></li>
+
+    {% if is_admin %}
+    <li style="color: blue; font-weight: bold;">[관리자 전용] 1. 시스템 관리 (사용자/통계 등록)</li>
+    <li style="color: blue; font-weight: bold;">[관리자 전용] 2. 통계설계영역 (항목/조사표 설계)</li>
+    {% endif %}
+</ul>
+
+<a href="{% url 'logout' %}">로그아웃</a>

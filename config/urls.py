@@ -15,8 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from django.views.generic import TemplateView
+from django.contrib.auth.decorators import login_required
+from surveys import views  # surveys의 views를 불러옵니다
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('accounts/', include('django.contrib.auth.urls')),
+    
+    # TemplateView 대신 views.dashboard로 변경!
+    path('', views.dashboard, name='dashboard'), 
 ]

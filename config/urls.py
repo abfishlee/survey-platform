@@ -26,4 +26,6 @@ urlpatterns = [
     
     # TemplateView 대신 views.dashboard로 변경!
     path('', views.dashboard, name='dashboard'), 
+    # 예: /surveys/1/design/ 주소로 접속하면 설계 화면 표시
+    path('<int:survey_id>/design/', views.survey_field_design, name='survey_field_design'),
 ]

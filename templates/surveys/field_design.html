@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>[항목설계] {{ survey.survey_name }}</h2>
+        <button type="button" class="btn btn-primary btn-lg" onclick="saveDesign()">최종 저장하기</button>
+    </div>
+
+    <ul class="nav nav-tabs" id="designTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active" id="list-tab" data-bs-toggle="tab" data-bs-target="#list-schema" type="button" role="tab">1. 명부 항목 설계</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey-schema" type="button" role="tab">2. 조사표 문항 설계</button>
+        </li>
+    </ul>
+
+    <div class="tab-content border border-top-0 p-4 bg-white shadow-sm" id="designTabContent">
+        <div class="tab-pane fade show active" id="list-schema" role="tabpanel">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>명부 항목 (가구/사업체 기본정보)</h5>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 명부 항목 추가</button>
+            </div>
+            <div id="list-container"></div>
+        </div>
+
+        <div class="tab-pane fade" id="survey-schema" role="tabpanel">
+            <div class="d-flex justify-content-between mb-3">
+                <h5>조사표 문항 (실제 설문 질문)</h5>
+                <button type="button" class="btn btn-outline-success btn-sm" onclick="addItem('survey')">+ 조사 문항 추가</button>
+            </div>
+            <div id="survey-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 서버 데이터 로드
+let listSchema = {{ list_fields|safe|default:"[]" }};
+let surveySchema = {{ survey_questions|safe|default:"[]" }};
+
+function renderItems(type) {
+    const container = document.getElementById(`${type}-container`);
+    const data = type === 'list' ? listSchema : surveySchema;
+    container.innerHTML = '';
+
+    data.forEach((item, index) => {
+        if (type === 'list') {
+            // 명부 항목 UI (ID, 항목명, 타입, 길이)
+            container.innerHTML += `
+                <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light">
+                    <div class="col-md-2">
+                        <label class="small fw-bold">ID</label>
+                        <input type="text" class="form-control" value="${item.id}" onchange="updateItem('list', ${index}, 'id', this.value)">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="small fw-bold">항목명</label>
+                        <input type="text" class="form-control" value="${item.label}" onchange="updateItem('list', ${index}, 'label', this.value)">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold">타입</label>
+                        <select class="form-select" onchange="updateItem('list', ${index}, 'type', this.value)">
+                            <option value="text" ${item.type==='text'?'selected':''}>문자형</option>
+                            <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="small fw-bold">길이</label>
+                        <input type="number" class="form-control" value="${item.length || 50}" onchange="updateItem('list', ${index}, 'length', this.value)">
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <button class="btn btn-danger btn-sm" onclick="removeItem('list', ${index})">삭제</button>
+                    </div>
+                </div>`;
+        } else {
+            // 조사표 문항 UI (ID, 질문내용, 타입, 선택지)
+            const showOptions = ['radio', 'checkbox'].includes(item.type);
+            container.innerHTML += `
+                <div class="row g-2 mb-3 align-items-end border p-3 rounded" style="background-color: #f8fff9;">
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-success">문항ID</label>
+                        <input type="text" class="form-control" value="${item.id}" onchange="updateItem('survey', ${index}, 'id', this.value)">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="small fw-bold text-success">질문 내용</label>
+                        <input type="text" class="form-control" value="${item.label}" onchange="updateItem('survey', ${index}, 'label', this.value)">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="small fw-bold text-success">응답 형식</label>
+                        <select class="form-select" onchange="changeSurveyType(${index}, this.value)">
+                            <option value="text" ${item.type==='text'?'selected':''}>단답형</option>
+                            <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
+                            <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일)</option>
+                            <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(다중)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 text-end">
+                        <button class="btn btn-danger btn-sm" onclick="removeItem('survey', ${index})">삭제</button>
+                    </div>
+                    ${showOptions ? `
+                    <div class="col-12 mt-2">
+                        <label class="small fw-bold text-muted">선택지 (콤마(,)로 구분)</label>
+                        <input type="text" class="form-control form-control-sm" placeholder="예: 매우그렇다, 그렇다, 보통, 아니다" value="${item.options || ''}" onchange="updateItem('survey', ${index}, 'options', this.value)">
+                    </div>` : ''}
+                </div>`;
+        }
+    });
+}
+
+function addItem(type) {
+    if (type === 'list') listSchema.push({ id: '', label: '', type: 'text', length: 50 });
+    else surveySchema.push({ id: '', label: '', type: 'text', options: '' });
+    renderItems(type);
+}
+
+function updateItem(type, index, field, value) {
+    if (type === 'list') listSchema[index][field] = value;
+    else surveySchema[index][field] = value;
+}
+
+function changeSurveyType(index, value) {
+    surveySchema[index].type = value;
+    renderItems('survey'); // 옵션 창 표시 여부를 위해 재렌더링
+}
+
+function removeItem(type, index) {
+    if (type === 'list') listSchema.splice(index, 1);
+    else surveySchema.splice(index, 1);
+    renderItems(type);
+}
+
+async function saveDesign() {
+    const response = await fetch(window.location.href, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: JSON.stringify({
+            list_schema: listSchema,
+            survey_schema: surveySchema
+        })
+    });
+    const result = await response.json();
+    if(result.status === 'success') alert('성공적으로 저장되었습니다.');
+    else alert('저장 실패: ' + result.message);
+}
+
+renderItems('list');
+renderItems('survey');
+</script>
+{% endblock %}

@@ -55,3 +55,30 @@ class SurveyData(models.Model):
 
     class Meta:
         verbose_name = "수집 데이터"# Create your models here.
+
+# 1. 조사(Survey) 기본 정보 모델 (이미 있다면 생략 가능)
+class Survey(models.Model):
+    title = models.CharField(max_length=200, verbose_name="조사명")
+    description = models.TextField(blank=True, verbose_name="설명")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title
+    
+# 2. 항목 설계(SurveyField) 모델 - 이번 단계의 핵심!
+class SurveyField(models.Model):
+    FIELD_TYPES = [
+        ('text', '문자열(Text)'),
+        ('number', '숫자(Number)'),
+        ('date', '날짜(Date)'),
+    ]
+
+    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='fields')
+    logical_name = models.CharField(max_length=100, verbose_name="항목명(논리)") # 예: 나이
+    physical_name = models.CharField(max_length=100, verbose_name="필드명(물리)") # 예: age
+    field_type = models.CharField(max_length=20, choices=FIELD_TYPES, default='text')
+    max_length = models.IntegerField(default=255, verbose_name="최대길이")
+    display_order = models.IntegerField(default=0, verbose_name="순서")
+
+    class Meta:
+        ordering = ['display_order'] # 화면에 보여줄 때 순서대로 정렬

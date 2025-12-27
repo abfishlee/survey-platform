@@ -1,5 +1,6 @@
 from django.contrib import admin
-from .models import SurveyMaster, SurveyDesign, SurveyData
+# SurveyRoster를 추가로 임포트해야 합니다.
+from .models import SurveyMaster, SurveyDesign, SurveyData, SurveyRoster 
 
 @admin.register(SurveyMaster)
 class SurveyMasterAdmin(admin.ModelAdmin):
@@ -10,7 +11,15 @@ class SurveyMasterAdmin(admin.ModelAdmin):
 class SurveyDesignAdmin(admin.ModelAdmin):
     list_display = ('survey',)
 
+# [신규 추가] 명부 관리 어드민
+@admin.register(SurveyRoster)
+class SurveyRosterAdmin(admin.ModelAdmin):
+    list_display = ('roster_name', 'survey', 'parent_roster', 'created_at')
+    list_filter = ('survey',)
+
+# SurveyData 모델의 필드가 survey에서 roster로 변경됨에 따른 수정
 @admin.register(SurveyData)
 class SurveyDataAdmin(admin.ModelAdmin):
-    list_display = ('respondent_id', 'survey', 'status', 'updated_at')
-    list_filter = ('status', 'survey')
+    # 'survey' 대신 'roster'를 사용합니다.
+    list_display = ('respondent_id', 'roster', 'status', 'updated_at')
+    list_filter = ('status', 'roster')

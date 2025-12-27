@@ -1,54 +1,46 @@
 {% extends 'base.html' %}
-
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>[항목설계] {{ survey.survey_name }}</h2>
+        <h2>[1단계: 항목설계] {{ survey.survey_name }}</h2>
         <div class="d-flex gap-2">
             <a href="{% url 'design_list' %}" class="btn btn-outline-secondary">목록으로</a>
-            <button type="button" class="btn btn-primary" onclick="saveDesign()">최종 저장하기</button>
+            <button type="button" class="btn btn-primary" onclick="saveDesign()">항목 확정 저장</button>
         </div>
     </div>
 
     <ul class="nav nav-tabs" id="designTab" role="tablist">
         <li class="nav-item">
-            <button class="nav-link active" id="list-tab" data-bs-toggle="tab" data-bs-target="#list-schema" type="button" role="tab">1. 명부 항목 설계</button>
+            <button class="nav-link active" id="list-tab" data-bs-toggle="tab" data-bs-target="#list-schema" type="button" role="tab">명부 항목 정의</button>
         </li>
         <li class="nav-item">
-            <button class="nav-link" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey-schema" type="button" role="tab">2. 조사표 문항 설계</button>
+            <button class="nav-link" id="survey-tab" data-bs-toggle="tab" data-bs-target="#survey-schema" type="button" role="tab">조사표 문항 정의</button>
         </li>
     </ul>
 
     <div class="tab-content border border-top-0 p-4 bg-white shadow-sm" id="designTabContent">
         <div class="tab-pane fade show active" id="list-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5>명부 항목 (가구/사업체 기본정보)</h5>
-                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 명부 항목 추가</button>
+                <h5>항목 풀(Pool) 관리</h5>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 신규 항목 추가</button>
             </div>
-            <div id="list-container">
-                </div>
+            <div id="list-container"></div>
         </div>
 
         <div class="tab-pane fade" id="survey-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5>조사표 문항 (실제 설문 질문)</h5>
+                <h5>조사 문항 관리</h5>
                 <button type="button" class="btn btn-outline-success btn-sm" onclick="addItem('survey')">+ 조사 문항 추가</button>
             </div>
-            <div id="survey-container">
-                </div>
+            <div id="survey-container"></div>
         </div>
     </div>
 </div>
 
 <script>
-// 서버에서 전달받은 기존 설계 데이터 로드
 let listSchema = {{ list_fields|safe|default:"[]" }};
 let surveySchema = {{ survey_questions|safe|default:"[]" }};
 
-/**
- * 항목 렌더링 함수
- * @param {string} type - 'list' 또는 'survey'
- */
 function renderItems(type) {
     const container = document.getElementById(`${type}-container`);
     const data = type === 'list' ? listSchema : surveySchema;
@@ -56,148 +48,87 @@ function renderItems(type) {
 
     data.forEach((item, index) => {
         if (type === 'list') {
-            // 1단계: 명부 항목 UI (ID, 항목명, 타입, 길이, 표출/검색 옵션)
             container.innerHTML += `
                 <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light">
-                    <div class="col-md-2">
-                        <label class="small fw-bold">ID (물리명)</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItem('list', ${index}, 'id', this.value)">
-                    </div>
                     <div class="col-md-3">
+                        <label class="small fw-bold">ID (물리명)</label>
+                        <input type="text" class="form-control" value="${item.id}" onchange="updateItem('list', ${index}, 'id', this.value)">
+                    </div>
+                    <div class="col-md-4">
                         <label class="small fw-bold">항목명 (논리명)</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItem('list', ${index}, 'label', this.value)">
+                        <input type="text" class="form-control" value="${item.label}" onchange="updateItem('list', ${index}, 'label', this.value)">
                     </div>
                     <div class="col-md-2">
-                        <label class="small fw-bold">타입/길이</label>
-                        <div class="input-group input-group-sm">
-                            <select class="form-select" onchange="updateItem('list', ${index}, 'type', this.value)">
-                                <option value="text" ${item.type==='text'?'selected':''}>문자</option>
-                                <option value="number" ${item.type==='number'?'selected':''}>숫자</option>
-                            </select>
-                            <input type="number" class="form-control" style="max-width: 70px;" value="${item.length || 50}" onchange="updateItem('list', ${index}, 'length', this.value)">
-                        </div>
+                        <label class="small fw-bold">타입</label>
+                        <select class="form-select" onchange="updateItem('list', ${index}, 'type', this.value)">
+                            <option value="text" ${item.type==='text'?'selected':''}>문자</option>
+                            <option value="number" ${item.type==='number'?'selected':''}>숫자</option>
+                        </select>
                     </div>
-                    <div class="col-md-3 d-flex gap-3 pb-2 ps-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="show_${index}" ${item.show_in_list ? 'checked' : ''} onchange="updateItem('list', ${index}, 'show_in_list', this.checked)">
-                            <label class="form-check-label small" for="show_${index}">리스트표출</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="search_${index}" ${item.is_search ? 'checked' : ''} onchange="updateItem('list', ${index}, 'is_search', this.checked)">
-                            <label class="form-check-label small" for="search_${index}">검색조건</label>
-                        </div>
+                    <div class="col-md-1">
+                        <label class="small fw-bold">길이</label>
+                        <input type="number" class="form-control" value="${item.length || 50}" onchange="updateItem('list', ${index}, 'length', this.value)">
                     </div>
                     <div class="col-md-2 text-end">
                         <button class="btn btn-danger btn-sm" onclick="removeItem('list', ${index})">삭제</button>
                     </div>
                 </div>`;
         } else {
-            // 3단계: 조사표 문항 UI (ID, 질문내용, 응답형식, 선택지)
+            // 조사표 문항 렌더링 (기존과 동일)
             const showOptions = ['radio', 'checkbox'].includes(item.type);
             container.innerHTML += `
                 <div class="row g-2 mb-3 align-items-end border p-3 rounded" style="background-color: #f8fff9;">
-                    <div class="col-md-2">
-                        <label class="small fw-bold text-success">문항ID</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItem('survey', ${index}, 'id', this.value)">
-                    </div>
-                    <div class="col-md-5">
-                        <label class="small fw-bold text-success">질문 내용</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItem('survey', ${index}, 'label', this.value)">
-                    </div>
+                    <div class="col-md-2"><label class="small fw-bold text-success">문항ID</label><input type="text" class="form-control" value="${item.id}" onchange="updateItem('survey', ${index}, 'id', this.value)"></div>
+                    <div class="col-md-5"><label class="small fw-bold text-success">질문 내용</label><input type="text" class="form-control" value="${item.label}" onchange="updateItem('survey', ${index}, 'label', this.value)"></div>
                     <div class="col-md-3">
                         <label class="small fw-bold text-success">응답 형식</label>
-                        <select class="form-select form-select-sm" onchange="changeSurveyType(${index}, this.value)">
+                        <select class="form-select" onchange="changeSurveyType(${index}, this.value)">
                             <option value="text" ${item.type==='text'?'selected':''}>단답형</option>
                             <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
                             <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일)</option>
-                            <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(다중)</option>
                         </select>
                     </div>
-                    <div class="col-md-2 text-end">
-                        <button class="btn btn-danger btn-sm" onclick="removeItem('survey', ${index})">삭제</button>
-                    </div>
-                    ${showOptions ? `
-                    <div class="col-12 mt-2">
-                        <label class="small fw-bold text-muted">선택지 설정 (콤마(,)로 구분)</label>
-                        <input type="text" class="form-control form-control-sm" placeholder="예: 매우그렇다, 그렇다, 보통, 아니다, 매우아니다" value="${item.options || ''}" onchange="updateItem('survey', ${index}, 'options', this.value)">
-                    </div>` : ''}
+                    <div class="col-md-2 text-end"><button class="btn btn-danger btn-sm" onclick="removeItem('survey', ${index})">삭제</button></div>
+                    ${showOptions ? `<div class="col-12 mt-2"><label class="small fw-bold text-muted">선택지 (,)구분</label><input type="text" class="form-control" value="${item.options || ''}" onchange="updateItem('survey', ${index}, 'options', this.value)"></div>` : ''}
                 </div>`;
         }
     });
 }
 
-/**
- * 항목 추가 함수
- */
 function addItem(type) {
-    if (type === 'list') {
-        listSchema.push({ id: '', label: '', type: 'text', length: 50, show_in_list: true, is_search: false });
-    } else {
-        surveySchema.push({ id: '', label: '', type: 'text', options: '' });
-    }
+    if (type === 'list') listSchema.push({ id: '', label: '', type: 'text', length: 50, is_mapped: true });
+    else surveySchema.push({ id: '', label: '', type: 'text', options: '' });
     renderItems(type);
 }
 
-/**
- * 데이터 업데이트 함수
- */
 function updateItem(type, index, field, value) {
     if (type === 'list') listSchema[index][field] = value;
     else surveySchema[index][field] = value;
 }
 
-/**
- * 조사표 응답 형식 변경 시 재렌더링 (선택지 입력란 제어)
- */
 function changeSurveyType(index, value) {
     surveySchema[index].type = value;
     renderItems('survey');
 }
 
-/**
- * 항목 삭제 함수
- */
 function removeItem(type, index) {
-    if (confirm('정말 삭제하시겠습니까?')) {
+    if (confirm('삭제하시겠습니까?')) {
         if (type === 'list') listSchema.splice(index, 1);
         else surveySchema.splice(index, 1);
         renderItems(type);
     }
 }
 
-/**
- * 서버에 설계 데이터 저장 (POST)
- */
 async function saveDesign() {
-    try {
-        const response = await fetch(window.location.href, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token }}'
-            },
-            body: JSON.stringify({
-                list_schema: listSchema,
-                survey_schema: surveySchema
-            })
-        });
-        
-        const result = await response.json();
-        if (result.status === 'success') {
-            alert('설계 내용이 성공적으로 저장되었습니다.');
-        } else {
-            alert('저장 실패: ' + result.message);
-        }
-    } catch (error) {
-        console.error('Error:', error);
-        alert('저장 중 서버 통신 오류가 발생했습니다.');
-    }
+    const response = await fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ list_schema: listSchema, survey_schema: surveySchema })
+    });
+    const result = await response.json();
+    alert(result.message);
 }
 
-// 페이지 로드 시 초기 렌더링 수행
-document.addEventListener('DOMContentLoaded', () => {
-    renderItems('list');
-    renderItems('survey');
-});
+document.addEventListener('DOMContentLoaded', () => { renderItems('list'); renderItems('survey'); });
 </script>
 {% endblock %}

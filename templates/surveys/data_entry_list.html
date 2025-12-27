@@ -1,47 +1,61 @@
 {% extends 'base.html' %}
-{% block content %}
-<h3>📊 {{ survey.survey_name }} - 명부 및 조사표 입력</h3>
+{% load survey_tags %} {% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'collection_list' %}">조사목록</a></li>
+            <li class="breadcrumb-item active">{{ roster.roster_name }}</li>
+        </ol>
+    </nav>
 
-{% if search_fields %}
-<div class="card mb-4 bg-light">
-    <div class="card-body">
-        <form method="get" class="row g-3">
-            {% for field in search_fields %}
-            <div class="col-md-3">
-                <label class="form-label small fw-bold">{{ field.label }}</label>
-                <input type="text" name="{{ field.id }}" class="form-control form-control-sm" value="{{ request.GET.field.id }}">
-            </div>
-            {% endfor %}
-            <div class="col-md-2 d-flex align-items-end">
-                <button type="submit" class="btn btn-dark btn-sm w-100">조회</button>
-            </div>
-        </form>
+    <h3>{{ roster.roster_name }} 데이터 리스트</h3>
+
+    {% if search_fields %}
+    <div class="card mb-4 bg-light border-0">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                {% for field in search_fields %}
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">{{ field.label }}</label>
+                    <input type="text" name="{{ field.id }}" class="form-control form-control-sm" value="{{ request.GET|dict_get:field.id }}">
+                </div>
+                {% endfor %}
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-dark btn-sm w-100">조회</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>명부레코드ID</th>
+                        {% for h in headers %}
+                        <th>{{ h.label }}</th>
+                        {% endfor %}
+                        <th>상태</th>
+                        <th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in data_list %}
+                    <tr>
+                        <td><code>{{ data.respondent_id }}</code></td>
+                        {% for h in headers %}
+                        <td>{{ data.list_values|dict_get:h.id }}</td> {% endfor %}
+                        <td><span class="badge bg-info text-dark">{{ data.status }}</span></td>
+                        <td><button class="btn btn-outline-primary btn-sm">입력하기</button></td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="100" class="text-center py-4 text-muted">데이터가 없습니다. 명부설계에서 CSV를 업로드하세요.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
-{% endif %}
-
-<table class="table table-hover border">
-    <thead class="table-secondary">
-        <tr>
-            <th>ID</th>
-            {% for header in headers %}
-            <th>{{ header.label }}</th>
-            {% endfor %}
-            <th>상태</th>
-            <th>관리</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for data in data_list %}
-        <tr>
-            <td>{{ data.respondent_id }}</td>
-            {% for header in headers %}
-            <td>{{ data.list_values|dict_get:header.id }}</td>
-            {% endfor %}
-            <td><span class="badge bg-info">{{ data.get_status_display }}</span></td>
-            <td><a href="#" class="btn btn-primary btn-sm">입력하기</a></td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
 {% endblock %}

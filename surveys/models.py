@@ -1,7 +1,8 @@
+# surveys/models.py
 from django.db import models
 from django.contrib.auth.models import User
 
-# 1. 통계 조사 등록 관리 (시스템 관리 영역 1.2)
+# 1. 통계 조사 마스터
 class SurveyMaster(models.Model):
     survey_code = models.CharField(max_length=20, unique=True, verbose_name="조사코드")
     survey_name = models.CharField(max_length=200, verbose_name="조사명")
@@ -16,69 +17,36 @@ class SurveyMaster(models.Model):
     def __str__(self):
         return f"[{self.survey_code}] {self.survey_name}"
 
-# 2. 통계 설계 영역 (항목 등록 및 조사표 설계 2.1, 2.2, 2.3)
+# 2. 통계 설계 (명부 항목 및 조사표 문항 정의)
 class SurveyDesign(models.Model):
     survey = models.OneToOneField(SurveyMaster, on_delete=models.CASCADE, related_name='design')
-    
-    # 명부(List) 항목 설계 (이름, 나이, 주소 등 가변 항목)
-    # 형식: [ {"id": "name", "label": "이름", "type": "text"}, ... ]
-    list_schema = models.JSONField(default=list, verbose_name="명부항목설계", help_text="명부에 사용될 헤더 항목 정의")
-    
-    # 조사표(Questionnaire) 문항 설계 (500개 이상의 가변 문항)
-    # 형식: [ {"id": "q1", "question": "연간 수입은?", "type": "number"}, ... ]
-    survey_schema = models.JSONField(default=list, verbose_name="조사표설계", help_text="조사표 문항 및 입력 방식 정의")
-    
-    # 에디팅 규칙 설계 (2.4 영역)
-    # 형식: [ {"rule_name": "나이체크", "logic": "age < 0", "msg": "나이는 음수일 수 없습니다"} ]
+    # 명부 항목 정의 풀(Pool)
+    list_schema = models.JSONField(default=list, verbose_name="명부항목설계")
+    # 조사표 문항 정의
+    survey_schema = models.JSONField(default=list, verbose_name="조사표설계")
     edit_rules = models.JSONField(default=list, verbose_name="에디팅규칙")
 
     class Meta:
         verbose_name = "통계 설계"
 
-# 3. 자료 수집 영역 (명부 데이터 및 조사표 답변 3.1)
-class SurveyData(models.Model):
-    survey = models.ForeignKey(SurveyMaster, on_delete=models.CASCADE, related_name='data_records')
-    respondent_id = models.CharField(max_length=50, verbose_name="응답자 고유ID")
-    
-    # 실제 데이터 저장 (JSONB 활용)
-    list_values = models.JSONField(default=dict, verbose_name="명부데이터")   # 명부 실제 값
-    survey_values = models.JSONField(default=dict, verbose_name="조사표답변") # 500개 문항 실제 답변
-    
-    status = models.CharField(
-        max_length=20, 
-        choices=[('READY', '준비'), ('ING', '조사중'), ('DONE', '완료'), ('ERROR', '에러')],
-        default='READY',
-        verbose_name="조사상태"
-    )
-    is_edited = models.BooleanField(default=False, verbose_name="에디팅검증여부")
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = "수집 데이터"# Create your models here.
-
-# 1. 조사(Survey) 기본 정보 모델 (이미 있다면 생략 가능)
-class Survey(models.Model):
-    title = models.CharField(max_length=200, verbose_name="조사명")
-    description = models.TextField(blank=True, verbose_name="설명")
+# [신규] 명부 모델: 확장성을 위해 상위명부ID(parent)를 포함
+class SurveyRoster(models.Model):
+    survey = models.ForeignKey(SurveyMaster, on_delete=models.CASCADE, related_name='rosters')
+    roster_name = models.CharField(max_length=100, verbose_name="명부명") # 예: 가구명부, 가구원명부
+    parent_roster = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, verbose_name="상위명부")
+    # 명부별 맵핑 및 옵션 (어떤 항목을 쓰고, 표출/검색할지 저장)
+    mapping_config = models.JSONField(default=list, verbose_name="항목맵핑설정")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.title
-    
-# 2. 항목 설계(SurveyField) 모델 - 이번 단계의 핵심!
-class SurveyField(models.Model):
-    FIELD_TYPES = [
-        ('text', '문자열(Text)'),
-        ('number', '숫자(Number)'),
-        ('date', '날짜(Date)'),
-    ]
+        return f"{self.survey.survey_name} - {self.roster_name}"        
 
-    survey = models.ForeignKey(Survey, on_delete=models.CASCADE, related_name='fields')
-    logical_name = models.CharField(max_length=100, verbose_name="항목명(논리)") # 예: 나이
-    physical_name = models.CharField(max_length=100, verbose_name="필드명(물리)") # 예: age
-    field_type = models.CharField(max_length=20, choices=FIELD_TYPES, default='text')
-    max_length = models.IntegerField(default=255, verbose_name="최대길이")
-    display_order = models.IntegerField(default=0, verbose_name="순서")
-
-    class Meta:
-        ordering = ['display_order'] # 화면에 보여줄 때 순서대로 정렬
+# 3. 수집 데이터 (실제 명부 및 답변 데이터)
+class SurveyData(models.Model):
+    # 이제 조사 데이터는 마스터가 아닌 특정 '명부'에 귀속됩니다
+    roster = models.ForeignKey(SurveyRoster, on_delete=models.CASCADE, related_name='data_records', null=True, blank=True)
+    respondent_id = models.CharField(max_length=50, verbose_name="명부레코드ID") # 명부 내 유니크 ID
+    list_values = models.JSONField(default=dict, verbose_name="명부데이터")
+    survey_values = models.JSONField(default=dict, verbose_name="조사표답변")
+    status = models.CharField(max_length=20, default='READY')
+    updated_at = models.DateTimeField(auto_now=True)

@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>📊 {{ survey.survey_name }} - 명부 및 조사표 입력</h3>
+
+{% if search_fields %}
+<div class="card mb-4 bg-light">
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            {% for field in search_fields %}
+            <div class="col-md-3">
+                <label class="form-label small fw-bold">{{ field.label }}</label>
+                <input type="text" name="{{ field.id }}" class="form-control form-control-sm" value="{{ request.GET.field.id }}">
+            </div>
+            {% endfor %}
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-dark btn-sm w-100">조회</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<table class="table table-hover border">
+    <thead class="table-secondary">
+        <tr>
+            <th>ID</th>
+            {% for header in headers %}
+            <th>{{ header.label }}</th>
+            {% endfor %}
+            <th>상태</th>
+            <th>관리</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for data in data_list %}
+        <tr>
+            <td>{{ data.respondent_id }}</td>
+            {% for header in headers %}
+            <td>{{ data.list_values|dict_get:header.id }}</td>
+            {% endfor %}
+            <td><span class="badge bg-info">{{ data.get_status_display }}</span></td>
+            <td><a href="#" class="btn btn-primary btn-sm">입력하기</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

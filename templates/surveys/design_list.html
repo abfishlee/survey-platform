@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="mb-4">
+        <h3>2. 통계설계영역 - 조사 선택</h3>
+        <p class="text-muted">설계할 조사를 선택해 주세요.</p>
+    </div>
+
+    <div class="row">
+        {% for survey in surveys %}
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title fw-bold text-primary">{{ survey.survey_name }}</h5>
+                    <h6 class="card-subtitle mb-3 text-muted">코드: {{ survey.survey_code }} | 연도: {{ survey.survey_year }}</h6>
+                    
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{% url 'survey_field_design' survey.id %}" class="btn btn-outline-primary btn-sm">항목설계</a>
+                        
+                        <button class="btn btn-outline-secondary btn-sm" disabled>명부설계</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled>조사표설계</button>
+                        <button class="btn btn-outline-secondary btn-sm" disabled>내검규칙설계</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5">
+            <p class="text-muted">등록된 조사가 없습니다. 관리자 페이지(Admin)에서 조사를 먼저 등록해 주세요.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

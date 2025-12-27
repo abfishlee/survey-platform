@@ -1,25 +1,47 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<div class="container mt-4">
-    <h3>📊 자료수집 영역 - 조사 선택</h3>
+<div class="container mt-2">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-dark btn-sm me-2">
+                🏠 홈
+            </a>
+            <h3 class="d-inline-block align-middle mb-0">자료수집 - 조사 선택</h3>
+        </div>
+    </div>
+
     <p class="text-muted">데이터를 입력할 조사의 명부를 선택하세요.</p>
 
     <div class="row">
         {% for survey in surveys %}
         <div class="col-md-6 mb-3">
-            <div class="card h-100 shadow-sm">
+            <div class="card h-100 shadow-sm border-top border-4 border-success">
                 <div class="card-body">
                     <h5 class="card-title fw-bold text-success">{{ survey.survey_name }}</h5>
+                    <h6 class="card-subtitle mb-3 text-muted">코드: {{ survey.survey_code }} | 연도: {{ survey.survey_year }}</h6>
+                    
                     <div class="list-group list-group-flush mt-3">
                         {% for r in survey.rosters.all %}
                         <a href="{% url 'roster_data_view' r.id %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                            {{ r.roster_name }}
+                            <div>
+                                <i class="bi bi-table me-2"></i> {{ r.roster_name }}
+                                {% if r.parent_roster %}
+                                <small class="text-muted">(상위: {{ r.parent_roster.roster_name }})</small>
+                                {% endif %}
+                            </div>
                             <span class="badge bg-success rounded-pill">{{ r.data_records.count }}건</span>
                         </a>
+                        {% empty %}
+                        <div class="text-muted small p-2">등록된 명부가 없습니다.</div>
                         {% endfor %}
                     </div>
                 </div>
             </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-center py-5">
+            <p class="text-muted">현재 진행 중인 조사가 없습니다.</p>
         </div>
         {% endfor %}
     </div>

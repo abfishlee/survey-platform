@@ -32,14 +32,27 @@ class SurveyDesign(models.Model):
 # [신규] 명부 모델: 확장성을 위해 상위명부ID(parent)를 포함
 class SurveyRoster(models.Model):
     survey = models.ForeignKey(SurveyMaster, on_delete=models.CASCADE, related_name='rosters')
-    roster_name = models.CharField(max_length=100, verbose_name="명부명") # 예: 가구명부, 가구원명부
+    # [추가] N00001 형식의 명부 코드를 저장할 필드
+    roster_code = models.CharField(max_length=20, unique=True, null=True, blank=True, verbose_name="명부ID")
+    roster_name = models.CharField(max_length=100, verbose_name="명부명")
     parent_roster = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, verbose_name="상위명부")
-    # 명부별 맵핑 및 옵션 (어떤 항목을 쓰고, 표출/검색할지 저장)
     mapping_config = models.JSONField(default=list, verbose_name="항목맵핑설정")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.survey.survey_name} - {self.roster_name}"        
+        # 출력 시 ID와 이름을 같이 보여주면 관리가 편합니다
+        return f"[{self.roster_code}] {self.roster_name}"
+
+class SurveyQuestionnaire(models.Model):
+    roster = models.ForeignKey(SurveyRoster, on_delete=models.CASCADE, related_name='questionnaires')
+    form_id = models.CharField(max_length=20, unique=True, verbose_name="조사표ID") # S00001
+    form_name = models.CharField(max_length=100, verbose_name="조사표명")
+    # 최종 확정된 문항 및 구조 정보 (Q1, 질문내용, 타입, 옵션 등 포함)
+    design_data = models.JSONField(default=list, verbose_name="조사표설계데이터")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.form_id}] {self.form_name}"        
 
 # 3. 수집 데이터 (실제 명부 및 답변 데이터)
 class SurveyData(models.Model):

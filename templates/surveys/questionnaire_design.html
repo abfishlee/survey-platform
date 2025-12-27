@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>[3단계: 조사표설계] {{ survey.survey_name }}</h2>
+        <a href="{% url 'design_list' %}" class="btn btn-outline-secondary">목록으로</a>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card mb-4">
+                <div class="card-header bg-warning text-dark fw-bold">조사표 생성</div>
+                <div class="card-body">
+                    <select id="rosterSelect" class="form-select form-select-sm mb-2">
+                        <option value="">--- 명부 선택 ---</option>
+                        {% for r in rosters %}
+                        <option value="{{ r.id }}">{{ r.roster_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" id="formName" class="form-control form-control-sm mb-2" placeholder="조사표명 (예: 기초조사표)">
+                    <button class="btn btn-warning btn-sm w-100" onclick="createQuestionnaire()">조사표 신규 생성</button>
+                </div>
+            </div>
+            
+            <div class="list-group">
+                <h6>등록된 조사표 목록</h6>
+                {% for r in rosters %}
+                    {% for q in r.questionnaires.all %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <small class="text-muted">{{ r.roster_name }}</small><br>
+                            <strong>{{ q.form_name }}</strong> ({{ q.form_id }})
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick='openDesignModal({{ q.id }}, "{{ q.form_name }}", {{ q.design_data|safe|default:"[]" }})'>조사표설계</button>
+                    </div>
+                    {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="designModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" style="height: 90vh;">
+            <div class="modal-header bg-dark text-white py-3" style="flex: 1;">
+                <h4 class="modal-title" id="displayFormName">조사표명 표기 영역</h4>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <div class="modal-body p-0 d-flex" style="flex: 9; overflow: hidden;">
+                <div class="bg-light border-end p-3" style="flex: 2; overflow-y: auto;">
+                    <h6 class="fw-bold mb-3 border-bottom pb-2">문항 풀 (Pool)</h6>
+                    <div id="pool-list">
+                        {% for item in item_pool %}
+                        <div class="form-check mb-2">
+                            <input class="form-check-input item-check" type="checkbox" value="{{ item.id }}" 
+                                   id="chk_{{ item.id }}" data-label="{{ item.label }}" data-type="{{ item.type }}" data-opts="{{ item.options }}"
+                                   onchange="toggleQuestion('{{ item.id }}')">
+                            <label class="form-check-label small" for="chk_{{ item.id }}">{{ item.label }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+                <div class="p-4" style="flex: 8; overflow-y: auto; background-color: #f8f9fa;">
+                    <div id="design-canvas">
+                        </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="saveDesign()">최종 설계 정보 저장</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentQId = null;
+let currentDesign = [];
+
+async function createQuestionnaire() {
+    const rosterId = document.getElementById('rosterSelect').value;
+    const name = document.getElementById('formName').value;
+    if(!rosterId || !name) return alert('명부와 조사표명을 입력하세요.');
+
+    const res = await fetch(window.location.href, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({ roster_id: rosterId, form_name: name })
+    });
+    if(res.ok) location.reload();
+}
+
+function openDesignModal(id, name, designData) {
+    currentQId = id;
+    currentDesign = designData;
+    document.getElementById('displayFormName').innerText = `[설계 중] ${name}`;
+    
+    // 체크박스 초기화
+    document.querySelectorAll('.item-check').forEach(chk => {
+        chk.checked = currentDesign.some(d => d.id === chk.value);
+    });
+
+    renderCanvas();
+    new bootstrap.Modal(document.getElementById('designModal')).show();
+}
+
+function toggleQuestion(id) {
+    const chk = document.getElementById(`chk_${id}`);
+    if(chk.checked) {
+        currentDesign.push({
+            id: id,
+            label: chk.dataset.label, // Q질문 (수정 가능하게 설정)
+            type: chk.dataset.type,
+            options: chk.dataset.opts
+        });
+    } else {
+        currentDesign = currentDesign.filter(d => d.id !== id);
+    }
+    renderCanvas();
+}
+
+function renderCanvas() {
+    const canvas = document.getElementById('design-canvas');
+    canvas.innerHTML = '';
+
+    currentDesign.forEach((q, idx) => {
+        let answerHtml = '';
+        if(q.type === 'radio' || q.type === 'checkbox') {
+            const opts = q.options.split(',').map(o => o.trim());
+            answerHtml = opts.map((o, i) => `
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" disabled>
+                    <label class="form-check-label small">${o}</label>
+                </div>
+            `).join('');
+        } else {
+            answerHtml = `<input type="text" class="form-control form-control-sm w-50" placeholder="답변 입력란" disabled>`;
+        }
+
+        const card = `
+            <div class="card mb-3 border-start border-4 border-primary">
+                <div class="card-body py-2">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="badge bg-primary">Q${idx + 1}</span>
+                    </div>
+                    <input type="text" class="form-control form-control-sm mb-2 fw-bold" value="${q.label}" 
+                           onchange="updateQuestionLabel('${q.id}', this.value)">
+                    <div class="bg-white p-2 border rounded">
+                        <small class="text-muted d-block mb-1">A${idx + 1} 답변 영역</small>
+                        ${answerHtml}
+                    </div>
+                </div>
+            </div>`;
+        canvas.insertAdjacentHTML('beforeend', card);
+    });
+}
+
+function updateQuestionLabel(id, value) {
+    const item = currentDesign.find(d => d.id === id);
+    if(item) item.label = value;
+}
+
+async function saveDesign() {
+    const res = await fetch(`/questionnaire/${currentQId}/save/`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({ design_data: currentDesign })
+    });
+    if(res.ok) alert('설계가 저장되었습니다.');
+}
+</script>
+{% endblock %}

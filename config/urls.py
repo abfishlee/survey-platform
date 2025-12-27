@@ -24,4 +24,10 @@ urlpatterns = [
     # 자료수집 영역
     path('collect/', views.collection_list, name='collection_list'), # 조사 선택
     path('collect/roster/<int:roster_id>/', views.roster_data_view, name='roster_data_view'), # 명부 리스트
+
+    path('<int:survey_id>/questionnaire_design/', views.survey_questionnaire_design, name='survey_questionnaire_design'),
+    path('questionnaire/<int:q_id>/save/', views.save_questionnaire_design, name='save_questionnaire_design'),
+
+    path('data/<int:data_id>/get-survey/', views.get_survey_data, name='get_survey_data'),
+    path('data/<int:data_id>/save-survey/', views.save_survey_response, name='save_survey_response'),
 ]

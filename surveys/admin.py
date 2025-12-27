@@ -14,7 +14,8 @@ class SurveyDesignAdmin(admin.ModelAdmin):
 # [신규 추가] 명부 관리 어드민
 @admin.register(SurveyRoster)
 class SurveyRosterAdmin(admin.ModelAdmin):
-    list_display = ('roster_name', 'survey', 'parent_roster', 'created_at')
+    # roster_code를 리스트에 추가
+    list_display = ('roster_code', 'roster_name', 'survey', 'parent_roster', 'created_at')
     list_filter = ('survey',)
 
 # SurveyData 모델의 필드가 survey에서 roster로 변경됨에 따른 수정

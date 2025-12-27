@@ -55,9 +55,22 @@ def survey_roster_design(request, survey_id):
         data = json.loads(request.body)
         roster_name = data.get('roster_name')
         parent_id = data.get('parent_id')
+
+        # [신규] 명부 ID(N00001) 생성 로직
+        last_roster = SurveyRoster.objects.all().order_by('id').last()
+        next_num = 1
+        if last_roster and last_roster.roster_code and last_roster.roster_code.startswith('N'):
+            try:
+                # 'N' 뒤의 숫자만 추출해서 +1
+                next_num = int(last_roster.roster_code[1:]) + 1
+            except (ValueError, TypeError):
+                next_num = 1
+        
+        new_roster_code = f"N{next_num:05d}" # 예: N00001
         
         SurveyRoster.objects.create(
             survey=survey,
+            roster_code=new_roster_code, # 생성된 코드 저장
             roster_name=roster_name,
             parent_roster_id=parent_id if parent_id else None
         )
@@ -144,6 +157,15 @@ def import_roster_csv(request, survey_id):
         if not roster:
             return JsonResponse({'status': 'error', 'message': '명부를 먼저 등록해주세요.'}, status=400)
 
+
+        # [신규] 명부 레코드 ID(00000001) 시작 번호 계산
+        # 시스템 전체 혹은 해당 명부 내 마지막 번호를 가져옵니다
+        last_record = SurveyData.objects.all().order_by('id').last()
+        next_rec_num = 1
+        if last_record and last_record.respondent_id.isdigit():
+            next_rec_num = int(last_record.respondent_id) + 1
+
+        
         csv_file = request.FILES['csv_file']
         decoded_file = csv_file.read().decode('utf-8-sig').splitlines()
         reader = csv.DictReader(decoded_file)
@@ -156,7 +178,7 @@ def import_roster_csv(request, survey_id):
                 field_id = item['id']
                 list_values[field_id] = row.get(label, '')
             
-            res_id = list(row.values())[0] if row.values() else f"R_{import_count}"
+            res_id = f"{next_rec_num:08d}"
             
             # roster 필드 참조로 수정됨
             SurveyData.objects.create(
@@ -165,7 +187,79 @@ def import_roster_csv(request, survey_id):
                 list_values=list_values,
                 status='READY'
             )
+            next_rec_num += 1 # 번호 증가
             import_count += 1
             
         return JsonResponse({'status': 'success', 'message': f'{import_count}건의 데이터가 임포트되었습니다.'})
     return JsonResponse({'status': 'error', 'message': '잘못된 요청입니다.'}, status=400)
+
+@user_passes_test(is_admin)
+def survey_questionnaire_design(request, survey_id):
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    # 항목설계에서 정의한 전체 문항 풀 가져오기
+    design = get_object_or_404(SurveyDesign, survey=survey)
+    rosters = survey.rosters.all()
+
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        roster_id = data.get('roster_id')
+        form_name = data.get('form_name')
+        
+        # S00001 자동 채번 로직
+        last_form = SurveyQuestionnaire.objects.all().order_by('id').last()
+        next_num = 1
+        if last_form and last_form.form_id.startswith('S'):
+            next_num = int(last_form.form_id[1:]) + 1
+        form_id = f"S{next_num:05d}"
+
+        SurveyQuestionnaire.objects.create(
+            roster_id=roster_id,
+            form_id=form_id,
+            form_name=form_name
+        )
+        return JsonResponse({'status': 'success'})
+
+    return render(request, 'surveys/questionnaire_design.html', {
+        'survey': survey,
+        'rosters': rosters,
+        'item_pool': design.survey_schema # 항목설계의 조사표 문항 풀
+    })
+
+@user_passes_test(is_admin)
+def save_questionnaire_design(request, q_id):
+    questionnaire = get_object_or_404(SurveyQuestionnaire, pk=q_id)
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        questionnaire.design_data = data.get('design_data', [])
+        questionnaire.save()
+        return JsonResponse({'status': 'success', 'message': '조사표 설계가 저장되었습니다.'})
+    
+@login_required
+def get_survey_data(request, data_id):
+    """조사표 설계와 기존 저장된 답변을 가져오는 API"""
+    data_record = get_object_or_404(SurveyData, pk=data_id)
+    # 해당 명부의 첫 번째 조사표를 가져옴 (필요시 선택 로직 추가 가능)
+    questionnaire = data_record.roster.questionnaires.first()
+    
+    if not questionnaire:
+        return JsonResponse({'status': 'error', 'message': '연결된 조사표 설계가 없습니다.'}, status=404)
+        
+    return JsonResponse({
+        'form_name': questionnaire.form_name,
+        'design_data': questionnaire.design_data,
+        'saved_values': data_record.survey_values # 기존 입력값
+    })
+
+@login_required
+def save_survey_response(request, data_id):
+    """조사표 답변(A)을 저장하는 API"""
+    if request.method == 'POST':
+        data_record = get_object_or_404(SurveyData, pk=data_id)
+        payload = json.loads(request.body)
+        
+        # 답변 데이터(A) 저장
+        data_record.survey_values = payload.get('answers', {})
+        data_record.status = 'ING' # 조사 상태를 '조사중'으로 변경
+        data_record.save()
+        
+        return JsonResponse({'status': 'success', 'message': '데이터가 저장되었습니다.'})    

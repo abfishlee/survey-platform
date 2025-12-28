@@ -33,4 +33,6 @@ urlpatterns = [
     # 유틸리티 (CSV 다운로드/업로드)
     path('<int:survey_id>/download-template/', views.download_roster_template, name='download_template'),
     path('<int:survey_id>/import-roster/', views.import_roster_csv, name='import_roster'),
+
+    path('<int:survey_id>/edit_rule_design/', views.survey_edit_rule_design, name='survey_edit_rule_design'),
 ]

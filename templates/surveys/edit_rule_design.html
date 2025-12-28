@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load survey_tags %} {% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-shield-check text-danger"></i> [4단계: 내검규칙설계] {{ survey.survey_name }}</h2>
+        <div class="d-flex gap-2">
+            <a href="{% url 'design_list' %}" class="btn btn-outline-secondary">목록으로</a>
+            <button class="btn btn-danger px-4 shadow" onclick="saveRules()">내검 규칙 최종 저장</button>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <span class="fw-bold">데이터 논리성 체크 규칙 (Editing Rules)</span>
+            <button class="btn btn-outline-light btn-sm" onclick="addRule()">+ 규칙 추가</button>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 120px;">규칙ID</th>
+                        <th style="width: 220px;">대상 문항</th>
+                        <th>내검 조건식 (논리식)</th>
+                        <th>에러 메시지 (조사원 출력용)</th>
+                        <th style="width: 120px;">심각도</th>
+                        <th style="width: 60px;">삭제</th>
+                    </tr>
+                </thead>
+                <tbody id="rule-tbody">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-info shadow-sm">
+        <h6 class="fw-bold"><i class="bi bi-info-circle-fill me-2"></i>내검 식 작성 가이드</h6>
+        <ul class="mb-0 small">
+            <li>대상 문항 ID는 <strong>{q1}</strong> 처럼 중괄호로 감싸서 입력함. (예: <code>{age} < 15 and {marriage} == '1'</code>)</li>
+            <li>파이썬 논리 연산자를 사용함: <code>and, or, not, ==, !=, >, <</code></li>
+            <li>심각도 <strong>Error</strong>는 수정 전까지 저장이 불가능하며, <strong>Warning</strong>은 확인 후 저장 가능함.</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+// 커스텀 필터를 사용하여 데이터를 안전하게 로드합니다.
+let editRules = {{ edit_rules|json_encode|safe|default:"[]" }};
+const itemPool = {{ item_pool|json_encode|safe|default:"[]" }};
+
+document.addEventListener('DOMContentLoaded', renderRules);
+
+function renderRules() {
+    const tbody = document.getElementById('rule-tbody');
+    tbody.innerHTML = '';
+
+    if (editRules.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">등록된 내검 규칙이 없습니다. 규칙을 추가해 주세요.</td></tr>';
+        return;
+    }
+
+    editRules.forEach((rule, idx) => {
+        tbody.innerHTML += `
+            <tr>
+                <td><input type="text" class="form-control form-control-sm text-center fw-bold" value="${rule.rule_id || 'ERR_'+(idx+1)}" onchange="updateRule(${idx}, 'rule_id', this.value)"></td>
+                <td>
+                    <select class="form-select form-select-sm" onchange="updateRule(${idx}, 'target_field', this.value)">
+                        <option value="">-- 문항 선택 --</option>
+                        ${itemPool.map(item => `<option value="${item.id}" ${rule.target_field === item.id ? 'selected' : ''}>${item.label} (${item.id})</option>`).join('')}
+                    </select>
+                </td>
+                <td><input type="text" class="form-control form-control-sm font-monospace" value="${rule.condition || ''}" placeholder="{q1} == '1' and {q2} > 50" onchange="updateRule(${idx}, 'condition', this.value)"></td>
+                <td><input type="text" class="form-control form-control-sm" value="${rule.message || ''}" placeholder="에러 메시지 입력" onchange="updateRule(${idx}, 'message', this.value)"></td>
+                <td>
+                    <select class="form-select form-select-sm" onchange="updateRule(${idx}, 'severity', this.value)">
+                        <option value="ERROR" ${rule.severity === 'ERROR' ? 'selected' : ''}>Error</option>
+                        <option value="WARNING" ${rule.severity === 'WARNING' ? 'selected' : ''}>Warning</option>
+                    </select>
+                </td>
+                <td><button class="btn btn-link text-danger p-0" onclick="removeRule(${idx})"><i class="bi bi-trash-fill"></i></button></td>
+            </tr>
+        `;
+    });
+}
+
+function addRule() {
+    editRules.push({ rule_id: `ERR_${editRules.length + 1}`, target_field: '', condition: '', message: '', severity: 'ERROR' });
+    renderRules();
+}
+
+function updateRule(idx, field, value) { editRules[idx][field] = value; }
+
+function removeRule(idx) {
+    if(confirm('이 규칙을 삭제하시겠습니까?')) {
+        editRules.splice(idx, 1);
+        renderRules();
+    }
+}
+
+async function saveRules() {
+    const res = await fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ edit_rules: editRules })
+    });
+    const result = await res.json();
+    if(res.ok) {
+        alert(result.message);
+        location.reload();
+    }
+}
+</script>
+{% endblock %}

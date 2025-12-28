@@ -194,3 +194,22 @@ def save_survey_response(request, data_id):
         data_record.status = 'ING'
         data_record.save()
         return JsonResponse({'status': 'success'})
+
+# 17. 내검 규칙 설계
+@user_passes_test(is_admin)
+def survey_edit_rule_design(request, survey_id):
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    # SurveyDesign 모델에 내검규칙(edit_rules)이 저장됨
+    design = get_object_or_404(SurveyDesign, survey=survey)
+    
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        design.edit_rules = data.get('edit_rules', [])
+        design.save()
+        return JsonResponse({'status': 'success', 'message': '내검 규칙이 저장되었습니다.'})
+
+    return render(request, 'surveys/edit_rule_design.html', {
+        'survey': survey,
+        'edit_rules': design.edit_rules,
+        'item_pool': design.survey_schema  # 내검 대상이 될 문항 목록
+    })    

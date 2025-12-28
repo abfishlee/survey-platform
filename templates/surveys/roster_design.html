@@ -8,29 +8,27 @@
 
     <div class="row">
         <div class="col-md-4">
-            <div class="card mb-4">
-                <div class="card-header bg-dark text-white">1. 명부 등록/관리</div>
-                <div class="card-body">
-                    <form id="rosterForm" class="mb-3">
-                        <div class="mb-2">
-                            <input type="text" id="rosterName" class="form-control form-control-sm" placeholder="명부명 (예: 가구명부)">
-                        </div>
-                        <div class="mb-2">
-                            <select id="parentRoster" class="form-select form-select-sm">
-                                <option value="">--- 상위 명부 선택 (옵션) ---</option>
-                                {% for r in rosters %}
-                                <option value="{{ r.id }}">{{ r.roster_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <button type="button" class="btn btn-primary btn-sm w-100" onclick="createRoster()">명부 신규 생성</button>
-                    </form>
+            <div class="card mb-4 shadow-sm border-0">
+                <div class="card-header bg-dark text-white fw-bold">1. 명부 등록/관리</div>
+                <div class="card-body bg-light">
+                    <div class="mb-2">
+                        <input type="text" id="rosterName" class="form-control form-control-sm" placeholder="명부명 (예: 가구명부)">
+                    </div>
+                    <div class="mb-3">
+                        <select id="parentRoster" class="form-select form-select-sm">
+                            <option value="">--- 상위 명부 선택 (옵션) ---</option>
+                            {% for r in rosters %}
+                            <option value="{{ r.id }}">{{ r.roster_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm w-100 mb-3" onclick="createRoster()">명부 신규 생성</button>
                     <hr>
-                    <div class="list-group">
+                    <div class="list-group shadow-sm">
                         {% for r in rosters %}
-                        <button class="list-group-item list-group-item-action {% if forloop.first %}active{% endif %}" 
-                                onclick="loadRosterConfig({{ r.id }})">
-                            {{ r.roster_name }} {% if r.parent_roster %}<small>(하위)</small>{% endif %}
+                        <button class="list-group-item list-group-item-action roster-item-btn" id="btn-{{ r.id }}"
+                                onclick="loadRosterConfig({{ r.id }}, '{{ r.roster_name }}')">
+                            <i class="bi bi-folder2-open me-2"></i>{{ r.roster_name }}
                         </button>
                         {% endfor %}
                     </div>
@@ -40,29 +38,30 @@
 
         <div class="col-md-8">
             <div id="configArea">
-                <div class="card mb-4 border-primary">
+                <div class="card mb-4 border-primary shadow-sm">
                     <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <span id="selectedRosterTitle">명부를 선택하세요</span>
-                        <button class="btn btn-light btn-sm" onclick="saveMapping()">맵핑 설정 저장</button>
+                        <span id="selectedRosterTitle" class="fw-bold">명부를 선택하세요</span>
+                        <button class="btn btn-light btn-sm fw-bold px-3 shadow-sm" onclick="saveMapping()">맵핑 설정 저장</button>
                     </div>
                     <div class="card-body p-0">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead>
-                                <tr class="table-light">
-                                    <th class="text-center">사용</th>
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr class="text-center">
+                                    <th style="width: 60px;">사용</th>
                                     <th>항목ID</th>
-                                    <th>항목명</th>
-                                    <th class="text-center">표출</th>
-                                    <th class="text-center">검색</th>
+                                    <th class="text-start">항목명</th>
+                                    <th style="width: 80px;">표출</th>
+                                    <th style="width: 80px;">검색</th>
                                 </tr>
                             </thead>
-                            <tbody id="mapping-body">
-                                </tbody>
+                            <tbody id="mapping-body" class="text-center">
+                                <tr><td colspan="5" class="py-5 text-muted">왼쪽 리스트에서 명부를 클릭해 주세요.</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
 
-                <div class="card border-warning">
+                <div class="card border-warning shadow-sm">
                     <div class="card-header bg-warning fw-bold">명부 데이터 업로드 (CSV)</div>
                     <div class="card-body d-flex gap-2">
                         <a href="{% url 'download_template' survey.id %}" class="btn btn-outline-dark btn-sm">양식 다운로드</a>
@@ -76,67 +75,100 @@
 </div>
 
 <script>
-let itemPool = {{ item_pool|safe|default:"[]" }};
+const itemPool = {{ item_pool|safe|default:"[]" }};
 let currentRosterId = null;
 
+// 명부 신규 생성
 async function createRoster() {
     const name = document.getElementById('rosterName').value;
     const parent = document.getElementById('parentRoster').value;
-    const response = await fetch(window.location.href, {
+
+    if (!name.trim()) {
+        alert('명부명을 입력해 주세요!');
+        document.getElementById('rosterName').focus();
+        return;
+    }
+
+    const res = await fetch(window.location.href, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
         body: JSON.stringify({ roster_name: name, parent_id: parent })
     });
-    if(response.ok) location.reload();
+    if (res.ok) location.reload();
 }
 
-function loadRosterConfig(id) {
+// 명부 선택 시 설정값 불러오기 (수정됨)
+async function loadRosterConfig(id, name) {
     currentRosterId = id;
-    // 실제 운영시에는 서버에서 해당 roster의 mapping_config를 가져와야 함
-    // 여기서는 파일럿을 위해 전체 풀을 보여줌
-    const tbody = document.getElementById('mapping-body');
-    tbody.innerHTML = itemPool.map((item, idx) => `
-        <tr>
-            <td class="text-center"><input type="checkbox" class="map-check" data-id="${item.id}" checked></td>
-            <td><code>${item.id}</code></td>
-            <td>${item.label}</td>
-            <td class="text-center"><input type="checkbox" class="show-check" data-id="${item.id}"></td>
-            <td class="text-center"><input type="checkbox" class="search-check" data-id="${item.id}"></td>
-        </tr>
-    `).join('');
+    document.getElementById('selectedRosterTitle').innerText = `[${name}] 항목 맵핑 설정`;
+    
+    // UI 활성화 표시
+    document.querySelectorAll('.roster-item-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`btn-${id}`).classList.add('active');
+
+    // 서버에서 저장된 config 가져오기
+    try {
+        const res = await fetch(`/roster/${id}/get-config/`);
+        const data = await res.json();
+        const savedConfig = data.mapping_config || [];
+
+        const tbody = document.getElementById('mapping-body');
+        tbody.innerHTML = itemPool.map(item => {
+            const saved = savedConfig.find(c => c.id === item.id) || {};
+            // is_mapped 기본값은 true로 설정 (처음 로딩 시)
+            const isMapped = saved.is_mapped !== undefined ? saved.is_mapped : true;
+            return `
+                <tr>
+                    <td><input type="checkbox" class="map-check" data-id="${item.id}" ${isMapped ? 'checked' : ''}></td>
+                    <td><code>${item.id}</code></td>
+                    <td class="text-start">${item.label}</td>
+                    <td><input type="checkbox" class="show-check" data-id="${item.id}" ${saved.show_in_list ? 'checked' : ''}></td>
+                    <td><input type="checkbox" class="search-check" data-id="${item.id}" ${saved.is_search ? 'checked' : ''}></td>
+                </tr>`;
+        }).join('');
+    } catch (e) {
+        alert('설정값을 불러오는데 실패했습니다.');
+    }
 }
 
+// 맵핑 설정 저장 (수정됨)
 async function saveMapping() {
-    if(!currentRosterId) return;
+    if(!currentRosterId) return alert('명부를 먼저 선택하세요.');
+    
     const config = itemPool.map(item => {
-        const row = document.querySelector(`input[data-id="${item.id}"].map-check`);
         return {
             ...item,
-            is_mapped: row.checked,
-            show_in_list: document.querySelector(`input[data-id="${item.id}"].show-check`).checked,
-            is_search: document.querySelector(`input[data-id="${item.id}"].search-check`).checked
+            is_mapped: document.querySelector(`.map-check[data-id="${item.id}"]`).checked,
+            show_in_list: document.querySelector(`.show-check[data-id="${item.id}"]`).checked,
+            is_search: document.querySelector(`.search-check[data-id="${item.id}"]`).checked
         };
     });
 
-    const res = await fetch(`/roster/${currentRosterId}/save_config/`, {
+    const res = await fetch(`/roster/${currentRosterId}/save-config/`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
         body: JSON.stringify({ mapping_config: config })
     });
-    if(res.ok) alert('설정이 저장되었습니다.');
+    
+    if(res.ok) alert('설정이 성공적으로 저장되었습니다.');
+    else alert('저장에 실패했습니다.');
 }
 
+// CSV 업로드
 async function importCSV() {
     if(!currentRosterId) return alert('명부를 먼저 선택하세요.');
+    const fileInput = document.getElementById('csvFile');
+    if(!fileInput.files[0]) return alert('파일을 선택하세요.');
+
     const formData = new FormData();
-    formData.append('csv_file', document.getElementById('csvFile').files[0]);
+    formData.append('csv_file', fileInput.files[0]);
     const res = await fetch("{% url 'import_roster' survey.id %}", {
         method: 'POST',
         headers: {'X-CSRFToken': '{{ csrf_token }}'},
         body: formData
     });
     const result = await res.json();
-    alert(result.message);
+    alert(result.message || '업로드 완료');
 }
 </script>
 {% endblock %}

@@ -1,36 +1,61 @@
 {% extends 'base.html' %}
+
 {% block content %}
-<div class="row">
+<div class="row justify-content-center mt-5">
+    
+    {% if is_admin %}
     <div class="col-md-4 mb-4">
-        <div class="card h-100 border-start border-4 border-secondary">
-            <div class="card-body">
-                <h5 class="card-title text-secondary">시스템관리</h5>
-                <p class="card-text text-muted">사용자 권한, 코드 관리 및 시스템 환경을 설정합니다.</p>
-                <a href="#" class="btn btn-secondary disabled">관리 바로가기</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 border-start border-4 border-primary">
-            <div class="card-body">
-                <h5 class="card-title text-primary">조사설계</h5>
-                <p class="card-text text-muted">항목 풀 정의, 명부 계층 구조 및 조사표를 설계합니다.</p>
-                <a href="{% url 'design_list' %}" class="btn btn-primary">조사 설계 바로가기</a>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4 mb-4">
-        <div class="card h-100 border-start border-4 border-success">
-            <div class="card-body">
-                <h5 class="card-title text-success">자료수집</h5>
-                <p class="card-text text-muted">명부를 확인하고 조사표 데이터를 입력/검증합니다.</p>
-                <div class="d-grid gap-2">
-                    <a href="{% url 'collection_list' %}" class="btn btn-success">명부 및 조사표 입력</a>
+        <div class="card h-100 border-start border-4 border-secondary shadow">
+            <div class="card-body d-flex flex-column text-center">
+                <h5 class="card-title text-secondary fw-bold mb-3">
+                    <i class="bi bi-person-gear display-6"></i><br>시스템관리
+                </h5>
+                <p class="card-text text-muted small">사용자 계정, 그룹 권한 및<br>시스템 설정을 관리합니다.</p>
+                <div class="mt-auto">
+                    <a href="/admin/" class="btn btn-secondary w-100">장고 관리자 접속</a>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 border-start border-4 border-primary shadow">
+            <div class="card-body d-flex flex-column text-center">
+                <h5 class="card-title text-primary fw-bold mb-3">
+                    <i class="bi bi-diagram-3-fill display-6"></i><br>조사설계
+                </h5>
+                <p class="card-text text-muted small">항목 풀, 명부 계층 구조 및<br>조사표 버전을 설계합니다.</p>
+                <div class="mt-auto">
+                    <a href="{% url 'design_list' %}" class="btn btn-primary w-100">조사 설계 시작</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100 border-start border-4 border-success shadow">
+            <div class="card-body d-flex flex-column text-center">
+                <h5 class="card-title text-success fw-bold mb-3">
+                    <i class="bi bi-clipboard-check-fill display-6"></i><br>자료수집
+                </h5>
+                <p class="card-text text-muted small">할당된 명부를 조회하고<br>조사 데이터를 입력합니다.</p>
+                <div class="mt-auto">
+                    <a href="{% url 'collection_list' %}" class="btn btn-success w-100">자료 수집 시작</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
+
+{% if not is_admin %}
+<div class="row mt-4">
+    <div class="col-12 text-center">
+        <div class="alert alert-info d-inline-block shadow-sm">
+            <i class="bi bi-info-circle-fill me-2"></i> <strong>조사원(Enumerator)</strong> 권한으로 접속하셨습니다.
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

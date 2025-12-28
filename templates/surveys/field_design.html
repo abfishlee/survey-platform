@@ -1,11 +1,13 @@
-{% extends 'base.html' %} {% load survey_tags %}
+{% extends 'base.html' %}
+{% load survey_tags %}
+
 {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>[1단계: 항목설계] {{ survey.survey_name }}</h2>
+        <h2><i class="bi bi-gear-wide-connected"></i> [1단계: 항목설계] {{ survey.survey_name }}</h2>
         <div class="d-flex gap-2">
             <a href="{% url 'design_list' %}" class="btn btn-outline-secondary">목록으로</a>
-            <button type="button" class="btn btn-primary" onclick="saveDesign()">항목 확정 저장</button>
+            <button type="button" class="btn btn-primary shadow-sm" onclick="saveDesign()">항목 저장</button>
         </div>
     </div>
 
@@ -18,10 +20,10 @@
         </li>
     </ul>
 
-    <div class="tab-content border border-top-0 p-4 bg-white shadow-sm" id="designTabContent">
+    <div class="tab-content border border-top-0 p-4 bg-white shadow-sm rounded-bottom" id="designTabContent">
         <div class="tab-pane fade show active" id="list-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5>항목 풀(Pool) 관리</h5>
+                <h5 class="text-secondary">명부 항목 속성 정의</h5>
                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 신규 항목 추가</button>
             </div>
             <div id="list-container"></div>
@@ -29,7 +31,7 @@
 
         <div class="tab-pane fade" id="survey-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5>조사 문항 관리</h5>
+                <h5 class="text-secondary">조사표 문항 속성 정의</h5>
                 <button type="button" class="btn btn-outline-success btn-sm" onclick="addItem('survey')">+ 조사 문항 추가</button>
             </div>
             <div id="survey-container"></div>
@@ -38,72 +40,127 @@
 </div>
 
 <script>
-let listSchema = {{ list_fields|safe|default:"[]" }};
-let surveySchema = {{ survey_questions|safe|default:"[]" }};
+/**
+ * 1. 데이터 초기화 (에러 해결 핵심)
+ * |json_encode|safe 필터를 사용하여 Python의 True/False/None을 JS의 true/false/null로 변환합니다.
+ */
+let listSchema = {{ list_fields|json_encode|safe|default:"[]" }};
+let surveySchema = {{ survey_questions|json_encode|safe|default:"[]" }};
 
+// 페이지 로드 시 즉시 실행
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        renderItems('list');
+        renderItems('survey');
+    } catch (e) {
+        console.error("초기 렌더링 중 오류:", e);
+    }
+});
+
+/**
+ * 2. 항목 추가 함수
+ */
+function addItem(type) {
+    // ID에 시간을 포함하여 고유성 보장
+    const uniqueId = `item_${Date.now()}`;
+    
+    if (type === 'list') {
+        listSchema.push({ id: uniqueId, label: '신규 항목', type: 'text', length: 50, is_mapped: true });
+    } else {
+        surveySchema.push({ id: uniqueId, label: '신규 질문', type: 'text', options: '' });
+    }
+    renderItems(type);
+}
+
+/**
+ * 3. 화면 렌더링 함수
+ */
 function renderItems(type) {
     const container = document.getElementById(`${type}-container`);
-    const data = type === 'list' ? listSchema : surveySchema;
+    const data = (type === 'list') ? listSchema : surveySchema;
+    
+    if (!container) return;
     container.innerHTML = '';
+
+    if (data.length === 0) {
+        container.innerHTML = '<div class="text-center py-5 text-muted border rounded bg-light">등록된 항목이 없습니다.</div>';
+        return;
+    }
 
     data.forEach((item, index) => {
         if (type === 'list') {
             container.innerHTML += `
-                <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light">
+                <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light shadow-sm">
                     <div class="col-md-3">
-                        <label class="small fw-bold">ID (물리명)</label>
-                        <input type="text" class="form-control" value="${item.id}" onchange="updateItem('list', ${index}, 'id', this.value)">
+                        <label class="small fw-bold text-primary">ID (물리명)</label>
+                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItemValue('list', ${index}, 'id', this.value)">
                     </div>
                     <div class="col-md-4">
                         <label class="small fw-bold">항목명 (논리명)</label>
-                        <input type="text" class="form-control" value="${item.label}" onchange="updateItem('list', ${index}, 'label', this.value)">
+                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItemValue('list', ${index}, 'label', this.value)">
                     </div>
                     <div class="col-md-2">
                         <label class="small fw-bold">타입</label>
-                        <select class="form-select" onchange="updateItem('list', ${index}, 'type', this.value)">
+                        <select class="form-select form-select-sm" onchange="updateItemValue('list', ${index}, 'type', this.value)">
                             <option value="text" ${item.type==='text'?'selected':''}>문자</option>
                             <option value="number" ${item.type==='number'?'selected':''}>숫자</option>
                         </select>
                     </div>
                     <div class="col-md-1">
                         <label class="small fw-bold">길이</label>
-                        <input type="number" class="form-control" value="${item.length || 50}" onchange="updateItem('list', ${index}, 'length', this.value)">
+                        <input type="number" class="form-control form-control-sm" value="${item.length || 50}" onchange="updateItemValue('list', ${index}, 'length', this.value)">
                     </div>
                     <div class="col-md-2 text-end">
-                        <button class="btn btn-danger btn-sm" onclick="removeItem('list', ${index})">삭제</button>
+                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem('${type}', ${index})">
+                            <i class="bi bi-trash"></i> 삭제
+                        </button>
                     </div>
                 </div>`;
         } else {
-            // 조사표 문항 렌더링 (기존과 동일)
             const showOptions = ['radio', 'checkbox'].includes(item.type);
             container.innerHTML += `
-                <div class="row g-2 mb-3 align-items-end border p-3 rounded" style="background-color: #f8fff9;">
-                    <div class="col-md-2"><label class="small fw-bold text-success">문항ID</label><input type="text" class="form-control" value="${item.id}" onchange="updateItem('survey', ${index}, 'id', this.value)"></div>
-                    <div class="col-md-5"><label class="small fw-bold text-success">질문 내용</label><input type="text" class="form-control" value="${item.label}" onchange="updateItem('survey', ${index}, 'label', this.value)"></div>
+                <div class="row g-2 mb-3 align-items-end border p-3 rounded shadow-sm" style="background-color: #f8fff9;">
+                    <div class="col-md-2">
+                        <label class="small fw-bold text-success">문항ID</label>
+                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItemValue('survey', ${index}, 'id', this.value)">
+                    </div>
+                    <div class="col-md-5">
+                        <label class="small fw-bold text-success">질문 내용</label>
+                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItemValue('survey', ${index}, 'label', this.value)">
+                    </div>
                     <div class="col-md-3">
                         <label class="small fw-bold text-success">응답 형식</label>
-                        <select class="form-select" onchange="changeSurveyType(${index}, this.value)">
+                        <select class="form-select form-select-sm" onchange="changeSurveyType(${index}, this.value)">
                             <option value="text" ${item.type==='text'?'selected':''}>단답형</option>
                             <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
                             <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일)</option>
+                            <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(중복)</option>
                         </select>
                     </div>
-                    <div class="col-md-2 text-end"><button class="btn btn-danger btn-sm" onclick="removeItem('survey', ${index})">삭제</button></div>
-                    ${showOptions ? `<div class="col-12 mt-2"><label class="small fw-bold text-muted">선택지 (,)구분</label><input type="text" class="form-control" value="${item.options || ''}" onchange="updateItem('survey', ${index}, 'options', this.value)"></div>` : ''}
+                    <div class="col-md-2 text-end">
+                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem('${type}', ${index})">
+                            <i class="bi bi-trash"></i> 삭제
+                        </button>
+                    </div>
+                    ${showOptions ? `
+                    <div class="col-12 mt-2">
+                        <label class="small fw-bold text-muted">선택지 (콤마[,]로 구분)</label>
+                        <input type="text" class="form-control form-control-sm" value="${item.options || ''}" onchange="updateItemValue('survey', ${index}, 'options', this.value)" placeholder="예: 예, 아니오, 모르겠다">
+                    </div>` : ''}
                 </div>`;
         }
     });
 }
 
-function addItem(type) {
-    if (type === 'list') listSchema.push({ id: '', label: '', type: 'text', length: 50, is_mapped: true });
-    else surveySchema.push({ id: '', label: '', type: 'text', options: '' });
-    renderItems(type);
-}
-
-function updateItem(type, index, field, value) {
-    if (type === 'list') listSchema[index][field] = value;
-    else surveySchema[index][field] = value;
+/**
+ * 4. 수정/삭제 유틸리티
+ */
+function updateItemValue(type, index, field, value) {
+    if (type === 'list') {
+        listSchema[index][field] = value;
+    } else {
+        surveySchema[index][field] = value;
+    }
 }
 
 function changeSurveyType(index, value) {
@@ -112,23 +169,38 @@ function changeSurveyType(index, value) {
 }
 
 function removeItem(type, index) {
-    if (confirm('삭제하시겠습니까?')) {
-        if (type === 'list') listSchema.splice(index, 1);
-        else surveySchema.splice(index, 1);
-        renderItems(type);
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    if (type === 'list') {
+        listSchema.splice(index, 1);
+    } else {
+        surveySchema.splice(index, 1);
+    }
+    renderItems(type);
+}
+
+/**
+ * 5. 최종 저장 기능
+ */
+async function saveDesign() {
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ 
+                list_schema: listSchema, 
+                survey_schema: surveySchema 
+            })
+        });
+        const result = await response.json();
+        if (response.ok) {
+            alert(result.message || "성공적으로 저장되었습니다.");
+            location.reload(); // 화면 갱신하여 데이터 확인
+        } else {
+            alert("저장 실패");
+        }
+    } catch (e) {
+        alert("서버 통신 중 오류가 발생했습니다.");
     }
 }
-
-async function saveDesign() {
-    const response = await fetch(window.location.href, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-        body: JSON.stringify({ list_schema: listSchema, survey_schema: surveySchema })
-    });
-    const result = await response.json();
-    alert(result.message);
-}
-
-document.addEventListener('DOMContentLoaded', () => { renderItems('list'); renderItems('survey'); });
 </script>
 {% endblock %}

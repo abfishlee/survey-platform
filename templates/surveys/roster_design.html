@@ -1,8 +1,8 @@
 {% extends 'base.html' %}
-{% block content %}
+{% load survey_tags %} {% block content %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2>[2단계: 명부설계] {{ survey.survey_name }}</h2>
+        <h2><i class="bi bi-card-list"></i> [2단계: 명부설계] {{ survey.survey_name }}</h2>
         <a href="{% url 'design_list' %}" class="btn btn-outline-secondary">목록으로</a>
     </div>
 
@@ -45,8 +45,8 @@
                     </div>
                     <div class="card-body p-0">
                         <table class="table table-hover mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr class="text-center">
+                            <thead class="table-light text-center">
+                                <tr>
                                     <th style="width: 60px;">사용</th>
                                     <th>항목ID</th>
                                     <th class="text-start">항목명</th>
@@ -75,8 +75,12 @@
 </div>
 
 <script>
-const itemPool = {{ item_pool|safe|default:"[]" }};
+/**
+ * 1. 변수 선언 및 초기화
+ * ReferenceError 방지를 위해 선언부를 최상단에 배치하고, json_encode 필터를 사용합니다.
+ */
 let currentRosterId = null;
+const itemPool = {{ item_pool|json_encode|safe|default:"[]" }};
 
 // 명부 신규 생성
 async function createRoster() {
@@ -97,7 +101,7 @@ async function createRoster() {
     if (res.ok) location.reload();
 }
 
-// 명부 선택 시 설정값 불러오기 (수정됨)
+// 명부 선택 시 설정값 불러오기
 async function loadRosterConfig(id, name) {
     currentRosterId = id;
     document.getElementById('selectedRosterTitle').innerText = `[${name}] 항목 맵핑 설정`;
@@ -106,7 +110,6 @@ async function loadRosterConfig(id, name) {
     document.querySelectorAll('.roster-item-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(`btn-${id}`).classList.add('active');
 
-    // 서버에서 저장된 config 가져오기
     try {
         const res = await fetch(`/roster/${id}/get-config/`);
         const data = await res.json();
@@ -115,7 +118,7 @@ async function loadRosterConfig(id, name) {
         const tbody = document.getElementById('mapping-body');
         tbody.innerHTML = itemPool.map(item => {
             const saved = savedConfig.find(c => c.id === item.id) || {};
-            // is_mapped 기본값은 true로 설정 (처음 로딩 시)
+            // 기존 설정이 없으면 기본적으로 '사용' 체크됨
             const isMapped = saved.is_mapped !== undefined ? saved.is_mapped : true;
             return `
                 <tr>
@@ -127,20 +130,25 @@ async function loadRosterConfig(id, name) {
                 </tr>`;
         }).join('');
     } catch (e) {
+        console.error(e);
         alert('설정값을 불러오는데 실패했습니다.');
     }
 }
 
-// 맵핑 설정 저장 (수정됨)
+// 맵핑 설정 저장
 async function saveMapping() {
     if(!currentRosterId) return alert('명부를 먼저 선택하세요.');
     
     const config = itemPool.map(item => {
+        const mapEl = document.querySelector(`.map-check[data-id="${item.id}"]`);
+        const showEl = document.querySelector(`.show-check[data-id="${item.id}"]`);
+        const searchEl = document.querySelector(`.search-check[data-id="${item.id}"]`);
+        
         return {
             ...item,
-            is_mapped: document.querySelector(`.map-check[data-id="${item.id}"]`).checked,
-            show_in_list: document.querySelector(`.show-check[data-id="${item.id}"]`).checked,
-            is_search: document.querySelector(`.search-check[data-id="${item.id}"]`).checked
+            is_mapped: mapEl ? mapEl.checked : true,
+            show_in_list: showEl ? showEl.checked : false,
+            is_search: searchEl ? searchEl.checked : false
         };
     });
 
@@ -162,13 +170,18 @@ async function importCSV() {
 
     const formData = new FormData();
     formData.append('csv_file', fileInput.files[0]);
-    const res = await fetch("{% url 'import_roster' survey.id %}", {
-        method: 'POST',
-        headers: {'X-CSRFToken': '{{ csrf_token }}'},
-        body: formData
-    });
-    const result = await res.json();
-    alert(result.message || '업로드 완료');
+    
+    try {
+        const res = await fetch("{% url 'import_roster' survey.id %}", {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token }}'},
+            body: formData
+        });
+        const result = await res.json();
+        alert(result.message || '업로드 완료');
+    } catch (e) {
+        alert('업로드 중 시스템 오류가 발생했습니다.');
+    }
 }
 </script>
 {% endblock %}

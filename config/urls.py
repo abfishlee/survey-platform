@@ -39,4 +39,6 @@ urlpatterns = [
     path('questionnaire/<int:q_id>/delete/', views.delete_questionnaire, name='delete_questionnaire'),
 
     path('clear/<int:roster_id>/', views.clear_roster_data),
+
+    path('survey/<int:survey_id>/delete-all/', views.delete_survey_complete, name='delete_survey_complete'),
 ]

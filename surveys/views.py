@@ -313,3 +313,17 @@ def clear_roster_data(request, roster_id):
     count = SurveyData.objects.filter(roster_id=roster_id).count()
     SurveyData.objects.filter(roster_id=roster_id).delete()
     return HttpResponse(f"{count}건의 데이터가 삭제되었습니다. 이제 다시 업로드하세요.")
+
+@user_passes_test(is_admin)  # 관리자만 삭제 가능하도록 권한 체크
+def delete_survey_complete(request, survey_id):
+    """
+    조사 마스터를 삭제하여 관련 모든 데이터를 일괄 삭제함
+    (SurveyDesign, SurveyRoster, SurveyQuestionnaire, SurveyData 등 자동 삭제)
+    """
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    survey_name = survey.survey_name
+    
+    # SurveyMaster 삭제 시 CASCADE 설정에 의해 하위 데이터가 모두 삭제됨
+    survey.delete()
+    
+    return HttpResponse(f"조사 '{survey_name}'(ID: {survey_id})와 관련된 모든 명부, 조사표, 데이터, 내검 규칙이 삭제되었습니다.")

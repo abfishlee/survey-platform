@@ -80,7 +80,7 @@ DATABASES = {
         'NAME': 'survey_db',       # 생성하신 DB 이름
         'USER': 'survey_user',     # 생성하신 계정
         'PASSWORD': 'pilot1234!',  # 계정 비밀번호
-        'HOST': '172.30.1.130',     # 로컬 개발시는 서버IP, 서버내부 실행시는 'localhost'
+        'HOST': '127.0.0.1',     # 로컬 개발시는 서버IP, 서버내부 실행시는 'localhost'
         'PORT': '5432',
     }
 }

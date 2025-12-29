@@ -35,4 +35,8 @@ urlpatterns = [
     path('<int:survey_id>/import-roster/', views.import_roster_csv, name='import_roster'),
 
     path('<int:survey_id>/edit_rule_design/', views.survey_edit_rule_design, name='survey_edit_rule_design'),
+    # 조사표 삭제 
+    path('questionnaire/<int:q_id>/delete/', views.delete_questionnaire, name='delete_questionnaire'),
+
+    path('clear/<int:roster_id>/', views.clear_roster_data),
 ]

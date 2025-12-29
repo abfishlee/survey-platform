@@ -121,6 +121,13 @@ def confirm_questionnaire_version(request, v_id):
     target.save()
     return JsonResponse({'status': 'success'})
 
+# 10.1 조사표 삭제
+@user_passes_test(is_admin)
+def delete_questionnaire(request, q_id):
+    questionnaire = get_object_or_404(SurveyQuestionnaire, pk=q_id)
+    questionnaire.delete() # Cascade 설정으로 인해 버전들도 함께 삭제됨
+    return JsonResponse({'status': 'success', 'message': '조사표와 모든 버전이 삭제되었습니다.'})
+
 # 11. 명부 양식(CSV) 다운로드
 @user_passes_test(is_admin)
 def download_roster_template(request, survey_id):
@@ -165,24 +172,107 @@ def collection_list(request):
 
 # 14. [자료수집] 명부 데이터 리스트
 @login_required
+@login_required
 def roster_data_view(request, roster_id):
     roster = get_object_or_404(SurveyRoster, pk=roster_id)
-    headers = [c for c in roster.mapping_config if c.get('show_in_list')]
+    config = roster.mapping_config if isinstance(roster.mapping_config, list) else []
+    
+    headers = [c for c in config if c.get('show_in_list')]
+    search_fields = [c for c in config if c.get('is_search')]
+    
+    data_list = roster.data_records.all().order_by('id')
+    
+    for field in search_fields:
+        field_id = field.get('id')
+        search_value = request.GET.get(field_id, '').strip()
+        if search_value:
+            filter_key = f'list_values__{field_id}__icontains'
+            data_list = data_list.filter(**{filter_key: search_value})
+
+    # 중복된 리턴을 하나로 합침
     return render(request, 'surveys/data_entry_list.html', {
-        'roster': roster, 'headers': headers, 'data_list': roster.data_records.all(),
-        'search_fields': [c for c in roster.mapping_config if c.get('is_search')]
+        'roster': roster,
+        'headers': headers,
+        'data_list': data_list,
+        'search_fields': search_fields,
+    })
+
+    # 5. 결과 반환
+    return render(request, 'surveys/data_entry_list.html', {
+        'roster': roster,
+        'headers': headers,
+        'data_list': data_list, # 필터링된 데이터
+        'search_fields': search_fields,
     })
 
 # 15. 입력 팝업용 데이터 조회 API
 @login_required
 def get_survey_data(request, data_id):
     data_record = get_object_or_404(SurveyData, pk=data_id)
-    questionnaire = data_record.roster.questionnaires.first()
-    if not questionnaire: return JsonResponse({'status': 'error', 'message': '조사표 없음'}, status=404)
-    v = questionnaire.versions.filter(is_confirmed=True).first()
-    if not v: return JsonResponse({'status': 'error', 'message': '확정된 버전 없음'}, status=404)
+    roster = data_record.roster
+    survey_master = roster.survey
+    # [추가] 해당 조사의 설계 정보에서 내검 규칙을 가져옴
+    design = getattr(survey_master, 'design', None)
+    edit_rules = design.edit_rules if design else []
+
+    questionnaires = roster.questionnaires.all()
+    if not questionnaires.exists():
+        return JsonResponse({'status': 'error', 'message': '연결된 조사표가 없습니다.'}, status=404)
+
+    survey_forms = []
+    for q in questionnaires:
+        v = q.versions.filter(is_confirmed=True).order_by('-version_number').first()
+        if v:
+            saved_values = data_record.survey_values.get(v.ver_form_id, {})
+            survey_forms.append({
+                'q_id': q.id,
+                'ver_form_id': v.ver_form_id,
+                'form_name': q.form_name,
+                'design_data': v.design_data,
+                'saved_values': saved_values
+            })
+
     return JsonResponse({
-        'form_name': questionnaire.form_name, 'design_data': v.design_data, 'saved_values': data_record.survey_values
+        'status': 'success',
+        'respondent_id': data_record.respondent_id,
+        'survey_year': survey_master.survey_year,
+        'survey_degree': survey_master.survey_degree,
+        'forms': survey_forms,
+        'edit_rules': edit_rules  # [추가] 내검 규칙 리스트 전송
+    })
+
+    # 3. 조사표별 확정 버전 데이터 구성
+    survey_forms = []
+    for q in questionnaires:
+        # 각 조사표의 '확정된(is_confirmed=True)' 버전 중 가장 최신 것 조회
+        v = q.versions.filter(is_confirmed=True).order_by('-version_number').first()
+        
+        if v:
+            # 해당 버전의 고유 ID(ver_form_id)를 키로 사용하여 저장된 답변 추출
+            # 데이터 구조 예: data_record.survey_values = {"S00001-V1": {...}, "S00002-V1": {...}}
+            saved_values = data_record.survey_values.get(v.ver_form_id, {})
+            
+            survey_forms.append({
+                'q_id': q.id,
+                'form_id': q.form_id,         # 조사표 기본 ID (S00001)
+                'ver_form_id': v.ver_form_id, # 버전별 고유 ID (S00001-V1)
+                'form_name': q.form_name,
+                'design_data': v.design_data,
+                'saved_values': saved_values
+            })
+
+    # 4. 확정된 버전이 하나도 없는 경우 처리
+    if not survey_forms:
+        return JsonResponse({'status': 'error', 'message': '확정된 조사표 버전이 없습니다.'}, status=404)
+
+    # 5. 최종 데이터 반환 (명부ID, 레코드ID, 차수 등 포함)
+    return JsonResponse({
+        'status': 'success',
+        'roster_id': roster.roster_code,
+        'respondent_id': data_record.respondent_id,
+        'survey_year': survey_master.survey_year,
+        'survey_degree': survey_master.survey_degree,
+        'forms': survey_forms  # 여러 개의 조사표 데이터가 들어있는 리스트
     })
 
 # 16. 조사 답변 저장 API
@@ -199,8 +289,10 @@ def save_survey_response(request, data_id):
 @user_passes_test(is_admin)
 def survey_edit_rule_design(request, survey_id):
     survey = get_object_or_404(SurveyMaster, pk=survey_id)
-    # SurveyDesign 모델에 내검규칙(edit_rules)이 저장됨
     design = get_object_or_404(SurveyDesign, survey=survey)
+    
+    # [수정] 해당 조사(Master) -> 명부(Roster) -> 조사표(Questionnaire)를 모두 가져옵니다.
+    questionnaires = SurveyQuestionnaire.objects.filter(roster__survey=survey)
     
     if request.method == 'POST':
         data = json.loads(request.body)
@@ -211,5 +303,13 @@ def survey_edit_rule_design(request, survey_id):
     return render(request, 'surveys/edit_rule_design.html', {
         'survey': survey,
         'edit_rules': design.edit_rules,
-        'item_pool': design.survey_schema  # 내검 대상이 될 문항 목록
-    })    
+        'item_pool': design.survey_schema,
+        'questionnaires': questionnaires,  # [반드시 추가]
+    })
+
+# surveys/views.py 에 잠시 추가
+def clear_roster_data(request, roster_id):
+    from .models import SurveyData
+    count = SurveyData.objects.filter(roster_id=roster_id).count()
+    SurveyData.objects.filter(roster_id=roster_id).delete()
+    return HttpResponse(f"{count}건의 데이터가 삭제되었습니다. 이제 다시 업로드하세요.")

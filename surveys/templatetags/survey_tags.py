@@ -1,23 +1,29 @@
-# surveys/templatetags/survey_tags.py 수정
+# surveys/templatetags/survey_tags.py
 
-import json # [추가]
+import json
 from django import template
-from django.utils.safestring import mark_safe # [추가]
 
 register = template.Library()
 
 @register.filter
 def dict_get(dictionary, key):
-    """딕셔너리에서 변수로 키값을 찾기 위한 필터"""
+    """
+    사전형 데이터에서 키값을 가져오되, 문자열로 들어온 경우도 처리함
+    """
     if not dictionary:
         return ""
-    return dictionary.get(str(key), dictionary.get(key, ""))
+    
+    # 만약 데이터가 문자열(JSON String)로 넘어온 경우 Dict로 변환
+    if isinstance(dictionary, str):
+        try:
+            dictionary = json.loads(dictionary.replace("'", '"'))
+        except:
+            return ""
 
-# [신규 추가] 조사표 설계를 JSON으로 안전하게 변환하는 필터
+    # 키값을 문자열로 변환하여 안전하게 조회
+    return dictionary.get(str(key), "")
+
 @register.filter
 def json_encode(value):
-    """데이터를 JSON 문자열로 변환하여 템플릿의 data- 속성에 안전하게 전달"""
-    try:
-        return mark_safe(json.dumps(value, ensure_ascii=False))
-    except (TypeError, ValueError):
-        return "[]"
+    from django.utils.safestring import mark_safe
+    return mark_safe(json.dumps(value, ensure_ascii=False))

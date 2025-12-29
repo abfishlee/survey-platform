@@ -49,12 +49,16 @@ class SurveyQuestionnaire(models.Model):
 class QuestionnaireVersion(models.Model):
     questionnaire = models.ForeignKey(SurveyQuestionnaire, on_delete=models.CASCADE, related_name='versions')
     version_number = models.IntegerField(verbose_name="버전번호")
+    # [추가] 버전별 고유 ID (예: S00001-V1)
+    ver_form_id = models.CharField(max_length=50, unique=True, null=True, verbose_name="버전별조사표ID")
     design_data = models.JSONField(default=list, verbose_name="설계데이터")
     is_confirmed = models.BooleanField(default=False, verbose_name="확정여부")
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        ordering = ['-version_number']
+    def save(self, *args, **kwargs):
+        if not self.ver_form_id:
+            self.ver_form_id = f"{self.questionnaire.form_id}-V{self.version_number}"
+        super().save(*args, **kwargs)
 
 # 6. 수집 데이터
 class SurveyData(models.Model):

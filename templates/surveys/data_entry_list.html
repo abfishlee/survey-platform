@@ -2,6 +2,27 @@
 {% load survey_tags %}
 
 {% block content %}
+<style>
+    /* WARNING 색상을 좀 더 진하게 변경 */
+    .text-validation-warning { color: #b45309 !important; font-weight: 600; }
+    .text-validation-error { color: #dc3545 !important; font-weight: 700; }
+    
+    /* 에러 리스트 항목 호버 효과 */
+    #error-list li { cursor: pointer; transition: background 0.2s; }
+    #error-list li:hover { background-color: #fff5f5; text-decoration: underline; }
+
+    /* 문항 강조 효과 (잠시 반짝임) */
+    .highlight-error {
+        animation: highlight-fade 2s ease-in-out;
+        border: 2px solid #dc3545 !important;
+        box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+    }
+    @keyframes highlight-fade {
+        0% { background-color: #ffebeb; }
+        100% { background-color: transparent; }
+    }
+</style>
+
 <div class="container mt-4">
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
@@ -10,7 +31,10 @@
         </ol>
     </nav>
 
-    <h3>{{ roster.roster_name }} 데이터 리스트</h3>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3><i class="bi bi-table me-2"></i>{{ roster.roster_name }} 데이터 리스트</h3>
+        <span class="badge bg-secondary">총 {{ data_list|length }}건</span>
+    </div>
 
     {% if search_fields %}
     <div class="card mb-4 bg-light border-0 shadow-sm">
@@ -19,28 +43,31 @@
                 {% for field in search_fields %}
                 <div class="col-md-3">
                     <label class="form-label small fw-bold">{{ field.label }}</label>
-                    <input type="text" name="{{ field.id }}" class="form-control form-control-sm" value="{{ request.GET|dict_get:field.id }}">
+                    <input type="text" name="{{ field.id }}" class="form-control form-control-sm" 
+                           value="{{ request.GET|dict_get:field.id }}" placeholder="검색어 입력">
                 </div>
                 {% endfor %}
                 <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-dark btn-sm w-100">조회</button>
+                    <button type="submit" class="btn btn-dark btn-sm w-100">
+                        <i class="bi bi-search me-1"></i>조회
+                    </button>
                 </div>
             </form>
         </div>
     </div>
     {% endif %}
 
-    <div class="card shadow-sm">
+    <div class="card shadow-sm border-0">
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0 text-center">
                 <thead class="table-light">
                     <tr>
-                        <th>레코드ID</th>
+                        <th style="width: 100px;">레코드ID</th>
                         {% for h in headers %}
                         <th>{{ h.label }}</th>
                         {% endfor %}
-                        <th>상태</th>
-                        <th>관리</th>
+                        <th style="width: 100px;">상태</th>
+                        <th style="width: 120px;">관리</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -50,13 +77,25 @@
                         {% for h in headers %}
                         <td>{{ data.list_values|dict_get:h.id }}</td>
                         {% endfor %}
-                        <td><span class="badge bg-info text-dark" id="status-{{ data.id }}">{{ data.status }}</span></td>
                         <td>
-                            <button class="btn btn-primary btn-sm" onclick="openSurveyPopup({{ data.id }})">입력하기</button>
+                            <span class="badge {% if data.status == 'READY' %}bg-secondary{% else %}bg-info text-dark{% endif %}" 
+                                  id="status-{{ data.id }}">
+                                {{ data.status }}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-primary btn-sm px-3" onclick="openSurveyPopup({{ data.id }})">
+                                입력하기
+                            </button>
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="100" class="py-4 text-muted">데이터가 없습니다.</td></tr>
+                    <tr>
+                        <td colspan="100" class="py-5 text-muted">
+                            <i class="bi bi-exclamation-circle display-6 d-block mb-2"></i>
+                            조회된 데이터가 없습니다.
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -64,18 +103,37 @@
     </div>
 </div>
 
-<div class="modal fade" id="entryModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
-        <div class="modal-content">
+<div class="modal fade" id="entryModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content shadow-lg">
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="entryFormTitle">조사표 입력</h5>
+                <div>
+                    <h5 class="modal-title fw-bold" id="entryFormTitle">조사표 데이터 입력</h5>
+                    <small id="respondentInfo" class="text-white-50"></small>
+                </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body bg-light" id="entry-container">
+            <div class="modal-body bg-light p-0">
+                <div id="validation-error-area" class="d-none m-3">
+                    <div class="alert alert-danger shadow-sm">
+                        <div class="card-header bg-danger text-white py-2 small fw-bold">
+                            <i class="bi bi-exclamation-octagon-fill me-2"></i>논리 내검 오류 내역 (항목 클릭 시 해당 위치로 이동)
+                        </div>
+                        <div class="card-body p-2 bg-white">
+                            <ul id="error-list" class="list-group list-group-flush mb-0 small"></ul>
+                        </div>                    
+                    </div>
                 </div>
-            <div class="modal-footer bg-white">
-                <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
-                <button class="btn btn-success" onclick="submitSurveyData()">입력 완료 저장</button>
+                <div class="bg-white border-bottom px-3 pt-2">
+                    <ul class="nav nav-tabs border-0" id="surveyTab" role="tablist"></ul>
+                </div>
+                <div class="tab-content p-4" id="surveyTabContent" style="min-height: 400px;"></div>
+            </div>
+            <div class="modal-footer bg-white border-top">
+                <button class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                <button id="btnSaveAll" class="btn btn-success px-4 shadow-sm fw-bold" onclick="submitSurveyData()">
+                    모든 조사표 일괄 저장
+                </button>
             </div>
         </div>
     </div>
@@ -83,69 +141,201 @@
 
 <script>
 let activeDataId = null;
+let activeVerFormIds = []; 
+let activeEditRules = [];
 
 async function openSurveyPopup(dataId) {
     activeDataId = dataId;
-    const res = await fetch(`/data/${dataId}/get-survey/`);
-    const data = await res.json();
-    
-    if(data.status === 'error') return alert(data.message);
+    try {
+        const res = await fetch(`/data/${dataId}/get-survey/`);
+        const data = await res.json();
+        activeEditRules = data.edit_rules || []; // 규칙 저장
+        if(data.status === 'error') return alert(data.message);
 
-    document.getElementById('entryFormTitle').innerText = data.form_name;
-    const container = document.getElementById('entry-container');
-    container.innerHTML = '';
+        document.getElementById('respondentInfo').innerText = `대상ID: ${data.respondent_id} | ${data.survey_year}년 ${data.survey_degree}차 조사`;
+        const tabList = document.getElementById('surveyTab');
+        const tabContent = document.getElementById('surveyTabContent');
+        tabList.innerHTML = ''; tabContent.innerHTML = '';
+        activeVerFormIds = [];
 
-    if (!data.design_data || data.design_data.length === 0) {
-        container.innerHTML = '<p class="text-center p-5 text-muted">설계된 문항이 없습니다.</p>';
-    } else {
-        data.design_data.forEach((q, idx) => {
-            const savedVal = data.saved_values[q.id] || '';
-            let inputHtml = '';
-            
-            if(q.type === 'radio') {
-                const opts = q.options ? q.options.split(',') : [];
-                inputHtml = opts.map(o => `
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input answer-input" type="radio" name="${q.id}" value="${o.trim()}" ${savedVal == o.trim() ? 'checked' : ''}>
-                        <label class="form-check-label">${o.trim()}</label>
-                    </div>`).join('');
-            } else {
-                inputHtml = `<input type="text" class="form-control answer-input" data-id="${q.id}" value="${savedVal}">`;
-            }
+        data.forms.forEach((form, idx) => {
+            const isActive = idx === 0 ? 'active' : '';
+            const isShow = idx === 0 ? 'show active' : '';
+            activeVerFormIds.push(form.ver_form_id);
 
-            container.insertAdjacentHTML('beforeend', `
-                <div class="card mb-3 border-0 shadow-sm">
-                    <div class="card-body">
-                        <div class="fw-bold mb-2">Q${idx+1}. ${q.label}</div>
-                        <div class="mt-2 p-2 border-top">${inputHtml}</div>
-                    </div>
-                </div>`);
+            tabList.insertAdjacentHTML('beforeend', `<li class="nav-item"><button class="nav-link ${isActive} fw-bold" data-bs-toggle="tab" data-bs-target="#tab-${form.q_id}" type="button">${form.form_name}</button></li>`);
+            let qHtml = '';
+            form.design_data.forEach((q, qIdx) => { qHtml += renderQuestionRow(q, qIdx, form.ver_form_id, form.saved_values[q.id]); });
+            tabContent.insertAdjacentHTML('beforeend', `<div class="tab-pane fade ${isShow}" id="tab-${form.q_id}" role="tabpanel"><div class="alert alert-info py-2 small mb-4">조사표ID: <strong>${form.ver_form_id}</strong></div>${qHtml}</div>`);
         });
+        new bootstrap.Modal(document.getElementById('entryModal')).show();
+    } catch (e) { alert("데이터 로드 실패"); }
+}
+
+function renderQuestionRow(q, idx, verFormId, savedVal) {
+    let inputHtml = '';
+    const nameAttr = `name="${verFormId}_${q.id}"`;
+    if(q.type === 'radio') {
+        const opts = q.options ? q.options.split(',') : [];
+        inputHtml = opts.map(o => `<div class="form-check form-check-inline"><input class="form-check-input answer-input" type="radio" ${nameAttr} data-form-id="${verFormId}" data-q-id="${q.id}" value="${o.trim()}" ${savedVal == o.trim() ? 'checked' : ''}><label class="form-check-label small">${o.trim()}</label></div>`).join('');
+    } else if(q.type === 'checkbox') {
+        const opts = q.options ? q.options.split(',') : [];
+        const savedArray = Array.isArray(savedVal) ? savedVal : (savedVal ? [savedVal] : []);
+        inputHtml = opts.map(o => `<div class="form-check form-check-inline"><input class="form-check-input answer-input" type="checkbox" ${nameAttr} data-form-id="${verFormId}" data-q-id="${q.id}" value="${o.trim()}" ${savedArray.includes(o.trim()) ? 'checked' : ''}><label class="form-check-label small">${o.trim()}</label></div>`).join('');
+    } else {
+        inputHtml = `<input type="text" class="form-control form-control-sm answer-input" data-form-id="${verFormId}" data-q-id="${q.id}" value="${savedVal || ''}" autocomplete="off">`;
     }
-    new bootstrap.Modal(document.getElementById('entryModal')).show();
+    return `<div class="card mb-3 border-0 shadow-sm"><div class="card-body py-3"><div class="fw-bold mb-2 small text-primary">Q${idx+1}. ${q.label}</div><div class="p-2 bg-white rounded border-top">${inputHtml}</div></div></div>`;
 }
 
 async function submitSurveyData() {
-    const answers = {};
+    // 1. 데이터 수집 (기존 로직)
+    const allAnswers = {};
+    activeVerFormIds.forEach(id => allAnswers[id] = {});
     document.querySelectorAll('.answer-input').forEach(input => {
-        if(input.type === 'radio') {
-            if(input.checked) answers[input.name] = input.value;
-        } else {
-            answers[input.dataset.id] = input.value;
+        const formId = input.dataset.formId;
+        const qId = input.dataset.qId;
+        if (input.type === 'radio' && input.checked) allAnswers[formId][qId] = input.value;
+        else if (input.type === 'checkbox') {
+            if (!allAnswers[formId][qId]) allAnswers[formId][qId] = [];
+            if (input.checked) allAnswers[formId][qId].push(input.value);
+        } 
+        else if (input.type === 'text') allAnswers[formId][qId] = input.value;
+    });
+
+    // 2. [추가] 내검 실행
+    const errors = runValidation(allAnswers);
+    
+    // 심각도가 ERROR인 항목이 있으면 저장 중단
+    const hasCriticalError = errors.some(e => e.severity === 'ERROR');
+    if (hasCriticalError) {
+        alert("논리적 오류가 발견되어 저장할 수 없습니다.\n상단의 오류 내역을 확인해 주세요.");
+        return;
+    }
+
+    // 경고(WARNING)만 있는 경우 사용자 확인 후 진행
+    if (errors.length > 0) {
+        if (!confirm("확인 사항(Warning)이 있습니다. 그래도 저장하시겠습니까?")) return;
+    } else {
+        if (!confirm("입력한 내용을 저장하시겠습니까?")) return;
+    }
+
+    // 3. 서버 전송 (기존 로직 동일)
+    const btnSave = document.getElementById('btnSaveAll');
+    btnSave.disabled = true;
+    try {
+        const response = await fetch(`/data/${activeDataId}/save-survey/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ answers: allAnswers })
+        });
+        const result = await response.json();
+        if(result.status === 'success') {
+            alert('성공적으로 저장되었습니다.');
+            location.reload(); 
+        }
+    } catch (error) {
+        alert('통신 에러');
+    } finally { btnSave.disabled = false; }
+}
+
+/**
+ * [핵심] 내검 엔진: 입력값과 규칙을 비교하여 에러 리턴
+ */
+function runValidation(allAnswers) {
+    const errors = [];
+    const errorListUI = document.getElementById('error-list');
+    const errorArea = document.getElementById('validation-error-area');
+    
+    errorListUI.innerHTML = '';
+    errorArea.classList.add('d-none');
+
+    // [중요] 모든 답변을 하나로 합치지 않고, 규칙별로 해당 조사표 데이터를 찾습니다.
+    activeEditRules.forEach(rule => {
+        if (!rule.condition || !rule.target_form_id) return;
+
+        try {
+            // 1. 현재 팝업에 로드된 폼들 중 규칙의 target_form_id와 일치하는 버전ID(S0001-V2 등)를 찾음
+            const matchedVerId = activeVerFormIds.find(id => id.startsWith(rule.target_form_id));
+            
+            // 2. 만약 해당 조사표가 현재 입력 팝업에 없다면 내검을 건너뜀
+            if (!matchedVerId) return;
+
+            // 3. 해당 조사표의 답변 데이터만 가져옴 (격리된 컨텍스트)
+            const formSpecificContext = allAnswers[matchedVerId] || {};
+
+            // 4. 논리식 내의 {q1} 형식을 해당 조사표의 값으로만 치환
+            const evalExpr = rule.condition.replace(/\{(\w+)\}/g, (match, key) => {
+                const val = formSpecificContext[key]; // 오직 이 폼의 데이터만 참조!
+                if (val === undefined || val === null || val === '') return "''";
+                return isNaN(val) ? `'${val}'` : val;
+            });
+
+            // 5. 내검 실행
+            if (new Function(`return ${evalExpr}`)()) {
+                errors.push({
+                    message: rule.message,
+                    target: rule.target_field,
+                    target_ver_id: matchedVerId, 
+                    severity: rule.severity
+                });
+            }
+        } catch (e) { 
+            console.error("내검 식 오류 (ID: " + rule.rule_id + "):", e); 
         }
     });
 
-    const response = await fetch(`/data/${activeDataId}/save-survey/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-        body: JSON.stringify({ answers: answers })
-    });
-    
-    if((await response.json()).status === 'success') {
-        alert('저장되었습니다.');
-        document.getElementById(`status-${activeDataId}`).innerText = 'ING';
-        bootstrap.Modal.getInstance(document.getElementById('entryModal')).hide();
+    // 에러 UI 표출 로직
+    if (errors.length > 0) {
+        errorArea.classList.remove('d-none');
+        errors.forEach(err => {
+            const li = document.createElement('li');
+            li.className = `list-group-item list-group-item-action py-1 border-0 ${err.severity === 'ERROR' ? 'text-validation-error' : 'text-validation-warning'}`;
+            li.innerHTML = `<i class="bi bi-caret-right-fill"></i> [${err.severity}] ${err.message}`;
+            
+            li.onclick = () => focusTargetField(err.target_ver_id, err.target);
+            errorListUI.appendChild(li);
+        });
     }
+    return errors;
+}
+
+/**
+ * [신규] 특정 문항으로 이동 및 포커스 함수
+ */
+function focusTargetField(verFormId, fieldId) {
+    if (!verFormId) {
+        alert("내검 규칙에 조사표 설정이 누락되었습니다. 설계 화면에서 조사표를 선택해주세요.");
+        return;
+    }
+
+    // 복합 선택자 사용: 특정 조사표 내의 특정 문항만 선택
+    const inputEl = document.querySelector(`[data-form-id="${verFormId}"][data-q-id="${fieldId}"]`);
+    
+    if (!inputEl) {
+        console.error("대상 찾기 실패:", verFormId, fieldId);
+        alert(`문항을 찾을 수 없습니다. (조사표: ${verFormId}, 문항: ${fieldId})`);
+        return;
+    }
+
+    // 1. 해당 문항이 있는 탭 활성화
+    const pane = inputEl.closest('.tab-pane');
+    if (pane) {
+        const tabTrigger = document.querySelector(`[data-bs-target="#${pane.id}"]`);
+        if (tabTrigger) new bootstrap.Tab(tabTrigger).show();
+    }
+
+    // 2. 스크롤 및 포커스 강조
+    setTimeout(() => {
+        inputEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        inputEl.focus();
+        
+        const card = inputEl.closest('.card');
+        if (card) {
+            card.classList.add('highlight-error');
+            setTimeout(() => card.classList.remove('highlight-error'), 2000);
+        }
+    }, 300);
 }
 </script>
 {% endblock %}

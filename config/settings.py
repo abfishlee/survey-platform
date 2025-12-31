@@ -134,6 +134,10 @@ LOGIN_REDIRECT_URL = '/'
 # 로그아웃 시 이동할 페이지
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
+# [중요] STATIC_ROOT 추가
+# 서버에서 collectstatic을 실행했을 때 모든 파일이 모이는 물리적 경로임.
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
 # 3. Django-Vite 상세 설정
 # 빌드된 파일들이 모이는 실제 물리적 경로
 DJANGO_VITE_ASSETS_PATH = BASE_DIR / "static" / "dist"

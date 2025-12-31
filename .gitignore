@@ -1,3 +1,5 @@
+# 환경 설정 파일 (절대 업로드 금지)
+.env
 # Python/Django 관련
 venv/
 __pycache__/

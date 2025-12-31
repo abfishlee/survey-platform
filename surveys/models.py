@@ -75,6 +75,10 @@ class QuestionnaireVersion(models.Model):
     # [추가] 버전별 고유 ID (예: S00001-V1)
     ver_form_id = models.CharField(max_length=50, unique=True, null=True, verbose_name="버전별조사표ID")
     design_data = models.JSONField(default=list, verbose_name="설계데이터")
+
+    # [추가 권장] 문항 개수를 저장하는 필드
+    item_count = models.IntegerField(default=0, verbose_name="문항수")
+
     is_confirmed = models.BooleanField(default=False, verbose_name="확정여부")
     created_at = models.DateTimeField(auto_now_add=True)
 

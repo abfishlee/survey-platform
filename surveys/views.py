@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, HttpResponse
 from .models import (
     SurveyMaster, SurveyDesign, SurveyData, SurveyRoster, 
-    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser # 필요한 모델들 확인
+    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser
     )
 from django.db import transaction
 
@@ -229,37 +229,61 @@ def get_questionnaire_versions(request, q_id):
     return JsonResponse(data, safe=False)
 
 
-@user_passes_test(is_admin)
+@user_passes_test(is_admin) # [수정] 관리자 권한 체크 추가
 def save_questionnaire_design(request, q_id):
-    """조사표의 새로운 설계 버전 저장"""
-    questionnaire = get_object_or_404(SurveyQuestionnaire, pk=q_id)
+    """
+    Vue 작업대 설계 데이터를 SurveyQuestionnaire 및 QuestionnaireVersion 모델에 저장함.
+    """
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            design_data = data.get('design_data', [])
+            design_items = data.get('design_data', [])
+            # 프론트에서 보낸 현재 버전 ID (수정 시 사용)
+            version_id = data.get('version_id') 
+            is_new_version = data.get('is_new_version', False)
 
-            # 트랜잭션을 사용하여 버전 생성 보장
+            questionnaire = get_object_or_404(SurveyQuestionnaire, id=q_id)
+
             with transaction.atomic():
-                last_v = questionnaire.versions.order_by('version_number').last()
-                next_v_num = (last_v.version_number + 1) if last_v else 1
-                
-                # QuestionnaireVersion 모델의 save()에서 ver_form_id가 자동 생성됨
-                new_v = QuestionnaireVersion.objects.create(
-                    questionnaire=questionnaire,
-                    version_number=next_v_num,
-                    design_data=design_data,
-                    is_confirmed=False
-                )
-            
-            return JsonResponse({'status': 'success', 'version_number': next_v_num})
-            
+                if is_new_version or not version_id:
+                    # [신규 버전 저장 로직]
+                    last_version = QuestionnaireVersion.objects.filter(
+                        questionnaire=questionnaire
+                    ).order_by('-version_number').first()
+                    
+                    new_version_num = (last_version.version_number + 1) if last_version else 1
+                    
+                    version_obj = QuestionnaireVersion.objects.create(
+                        questionnaire=questionnaire,
+                        version_number=new_version_num,
+                        design_data=design_items,
+                        item_count=len(design_items),
+                        is_confirmed=False
+                    )
+                    msg = f"새로운 버전 V{new_version_num}이(가) 저장되었습니다."
+                else:
+                    # [기존 버전 덮어쓰기 로직]
+                    version_obj = get_object_or_404(QuestionnaireVersion, id=version_id)
+                    
+                    if version_obj.is_confirmed:
+                        return JsonResponse({'status': 'error', 'message': '확정된 버전은 수정할 수 없습니다. 신규 버전으로 저장하세요.'}, status=400)
+                    
+                    version_obj.design_data = design_items
+                    version_obj.item_count = len(design_items)
+                    version_obj.save()
+                    msg = f"버전 V{version_obj.version_number}의 수정사항이 저장되었습니다."
+
+            return JsonResponse({
+                'status': 'success',
+                'version_id': version_obj.id,
+                'version_number': version_obj.version_number,
+                'message': msg
+            })
+
         except Exception as e:
-            # DB 에러나 데이터 형식이 틀린 경우 500 에러와 메시지 반환
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
             
-    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)            
-    # POST가 아닌 접근에 대한 처리
-    return JsonResponse({'status': 'error', 'message': '잘못된 접근 방식입니다.'}, status=405)
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
 @user_passes_test(is_admin)
 def confirm_questionnaire_version(request, v_id):

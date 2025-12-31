@@ -22,8 +22,23 @@ jobs:
           script: |
             cd /srv/survey-platform/survey-platform
             git pull origin main
+
+            # 1. 프론트엔드 빌드 추가
+            echo "--- 프론트엔드 빌드 시작 ---"
+            cd frontend
+            npm install
+            npm run build
+            cd ..
+
+            # 2. Django 가상환경 및 라이브러리 설치
             source venv/bin/activate
             pip install -r requirements.txt
             python manage.py migrate
-            # 수정된 서비스 재기동 명령어!
+
+            # 3. Django 정적 파일 수집 추가 (Vue 빌드 파일을 Django static으로 복사)
+            echo "--- 정적 파일 수집(collectstatic) 시작 ---"
+            python manage.py collectstatic --noinput
+
+            # 4. 서비스 재기동
+            echo "--- 서비스 재기동 ---"
             sudo systemctl restart survey

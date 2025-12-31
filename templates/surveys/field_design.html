@@ -41,13 +41,11 @@
 
 <script>
 /**
- * 1. 데이터 초기화 (에러 해결 핵심)
- * |json_encode|safe 필터를 사용하여 Python의 True/False/None을 JS의 true/false/null로 변환합니다.
+ * 1. 데이터 초기화
  */
 let listSchema = {{ list_fields|json_encode|safe|default:"[]" }};
 let surveySchema = {{ survey_questions|json_encode|safe|default:"[]" }};
 
-// 페이지 로드 시 즉시 실행
 document.addEventListener('DOMContentLoaded', () => {
     try {
         renderItems('list');
@@ -61,13 +59,21 @@ document.addEventListener('DOMContentLoaded', () => {
  * 2. 항목 추가 함수
  */
 function addItem(type) {
-    // ID에 시간을 포함하여 고유성 보장
     const uniqueId = `item_${Date.now()}`;
     
     if (type === 'list') {
-        listSchema.push({ id: uniqueId, label: '신규 항목', type: 'text', length: 50, is_mapped: true });
+        listSchema.push({ id: uniqueId, label: '신규 항목', type: 'text', length: 50 });
     } else {
-        surveySchema.push({ id: uniqueId, label: '신규 질문', type: 'text', options: '' });
+        // 테이블 관련 기본 속성 추가
+        surveySchema.push({ 
+            id: uniqueId, 
+            label: '신규 질문', 
+            type: 'text', 
+            options: '',
+            columns: ['항목1', '항목2'], // 테이블 기본 컬럼
+            useRowHeaders: false,
+            rowLabels: ''
+        });
     }
     renderItems(type);
 }
@@ -117,9 +123,11 @@ function renderItems(type) {
                     </div>
                 </div>`;
         } else {
-            const showOptions = ['radio', 'checkbox'].includes(item.type);
+            const isChoice = ['radio', 'checkbox'].includes(item.type);
+            const isTable = item.type === 'table';
+
             container.innerHTML += `
-                <div class="row g-2 mb-3 align-items-end border p-3 rounded shadow-sm" style="background-color: #f8fff9;">
+                <div class="row g-2 mb-3 align-items-end border p-3 rounded shadow-sm" style="background-color: ${isTable ? '#f0f4ff' : '#f8fff9'};">
                     <div class="col-md-2">
                         <label class="small fw-bold text-success">문항ID</label>
                         <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItemValue('survey', ${index}, 'id', this.value)">
@@ -135,6 +143,7 @@ function renderItems(type) {
                             <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
                             <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일)</option>
                             <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(중복)</option>
+                            <option value="table" ${item.type==='table'?'selected':''}>표/테이블</option>
                         </select>
                     </div>
                     <div class="col-md-2 text-end">
@@ -142,10 +151,39 @@ function renderItems(type) {
                             <i class="bi bi-trash"></i> 삭제
                         </button>
                     </div>
-                    ${showOptions ? `
+
+                    ${isChoice ? `
                     <div class="col-12 mt-2">
                         <label class="small fw-bold text-muted">선택지 (콤마[,]로 구분)</label>
                         <input type="text" class="form-control form-control-sm" value="${item.options || ''}" onchange="updateItemValue('survey', ${index}, 'options', this.value)" placeholder="예: 예, 아니오, 모르겠다">
+                    </div>` : ''}
+
+                    ${isTable ? `
+                    <div class="col-12 mt-2 p-2 border rounded bg-white shadow-sm">
+                        <div class="row g-2">
+                            <div class="col-md-12">
+                                <label class="small fw-bold text-primary"><i class="bi bi-table"></i> 열(Header) 설정 (콤마[,]로 구분)</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       value="${Array.isArray(item.columns) ? item.columns.join(', ') : item.columns}" 
+                                       onchange="updateTableField(${index}, 'columns', this.value)" 
+                                       placeholder="예: 이름, 나이, 성별">
+                            </div>
+                            <div class="col-md-4 mt-2">
+                                <div class="form-check form-switch mt-2">
+                                    <input class="form-check-input" type="checkbox" id="rowHead_${index}" 
+                                           ${item.useRowHeaders ? 'checked' : ''} 
+                                           onchange="updateTableField(${index}, 'useRowHeaders', this.checked)">
+                                    <label class="form-check-label small fw-bold" for="rowHead_${index}">표측(행 머리글) 사용</label>
+                                </div>
+                            </div>
+                            <div class="col-md-8 mt-2" id="rowLabelsBox_${index}" style="display: ${item.useRowHeaders ? 'block' : 'none'}">
+                                <label class="small fw-bold text-primary">표측(왼쪽 질의) 입력 (콤마[,]로 구분)</label>
+                                <input type="text" class="form-control form-control-sm" 
+                                       value="${Array.isArray(item.rowLabels) ? item.rowLabels.join(', ') : item.rowLabels}" 
+                                       onchange="updateTableField(${index}, 'rowLabels', this.value)" 
+                                       placeholder="예: 가구주, 배우자, 자녀1">
+                            </div>
+                        </div>
                     </div>` : ''}
                 </div>`;
         }
@@ -153,8 +191,19 @@ function renderItems(type) {
 }
 
 /**
- * 4. 수정/삭제 유틸리티
+ * 4. 테이블 전용 필드 업데이트 유틸리티
  */
+function updateTableField(index, field, value) {
+    if (field === 'useRowHeaders') {
+        surveySchema[index][field] = value;
+        // 스위치 켜짐/꺼짐에 따라 표측 라벨 입력창 표시 제어
+        document.getElementById(`rowLabelsBox_${index}`).style.display = value ? 'block' : 'none';
+    } else {
+        // 콤마로 구분된 입력을 배열로 변환
+        surveySchema[index][field] = value.split(',').map(s => s.trim()).filter(s => s !== '');
+    }
+}
+
 function updateItemValue(type, index, field, value) {
     if (type === 'list') {
         listSchema[index][field] = value;
@@ -165,6 +214,12 @@ function updateItemValue(type, index, field, value) {
 
 function changeSurveyType(index, value) {
     surveySchema[index].type = value;
+    // 테이블 타입으로 변경 시 초기 배열 구조 보장
+    if (value === 'table') {
+        if (!surveySchema[index].columns) surveySchema[index].columns = ['항목1', '항목2'];
+        if (surveySchema[index].useRowHeaders === undefined) surveySchema[index].useRowHeaders = false;
+        if (!surveySchema[index].rowLabels) surveySchema[index].rowLabels = [];
+    }
     renderItems('survey');
 }
 
@@ -194,7 +249,7 @@ async function saveDesign() {
         const result = await response.json();
         if (response.ok) {
             alert(result.message || "성공적으로 저장되었습니다.");
-            location.reload(); // 화면 갱신하여 데이터 확인
+            location.reload();
         } else {
             alert("저장 실패");
         }

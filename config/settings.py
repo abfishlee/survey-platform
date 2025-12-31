@@ -80,7 +80,7 @@ DATABASES = {
         'NAME': 'survey_db',       # 생성하신 DB 이름
         'USER': 'survey_user',     # 생성하신 계정
         'PASSWORD': 'pilot1234!',  # 계정 비밀번호
-        'HOST': '127.0.0.1',     # 로컬 개발시는 서버IP, 서버내부 실행시는 'localhost'
+        'HOST': '119.223.104.14',     # 로컬 개발시는 서버IP, 서버내부 실행시는 'localhost'
         'PORT': '5432',
     }
 }
@@ -120,7 +120,14 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
+# settings.py 하단
+
 STATIC_URL = 'static/'
+
+# 개발 환경에서 static 폴더 위치를 지정
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
 
 # 로그인 성공 시 이동할 페이지
 LOGIN_REDIRECT_URL = '/' 

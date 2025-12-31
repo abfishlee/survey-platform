@@ -12,13 +12,16 @@ urlpatterns = [
     path('', views.dashboard, name='dashboard'),
     path('design-list/', views.design_list, name='design_list'),
     
-    # 1단계: 항목설계 / 2단계: 명부설계
+    # 1단계: 권역설계
+    path('<int:survey_id>/area_design/', views.survey_area_design, name='survey_area_design'),
+
+    # 2단계: 항목설계 / 3단계: 명부설계
     path('<int:survey_id>/field_design/', views.survey_field_design, name='survey_field_design'),
     path('<int:survey_id>/roster_design/', views.survey_roster_design, name='survey_roster_design'),
     path('roster/<int:roster_id>/get-config/', views.get_roster_config, name='get_roster_config'),
     path('roster/<int:roster_id>/save-config/', views.save_roster_config, name='save_roster_config'),
     
-    # 3단계: 조사표설계 및 버전 관리
+    # 4단계: 조사표설계 및 버전 관리
     path('<int:survey_id>/questionnaire_design/', views.survey_questionnaire_design, name='survey_questionnaire_design'),
     path('questionnaire/<int:q_id>/versions/', views.get_questionnaire_versions, name='get_questionnaire_versions'),
     path('questionnaire/<int:q_id>/save/', views.save_questionnaire_design, name='save_questionnaire_design'),
@@ -38,7 +41,12 @@ urlpatterns = [
     # 조사표 삭제 
     path('questionnaire/<int:q_id>/delete/', views.delete_questionnaire, name='delete_questionnaire'),
 
+    # 4단계: 업무량배정 (추후 개발을 위해 경로 선점)
+    path('<int:survey_id>/assignment/', views.survey_assignment, name='survey_assignment'),
+    path('survey/<int:survey_id>/remove-assignment/', views.remove_survey_assignment, name='remove_survey_assignment'),
+
     path('clear/<int:roster_id>/', views.clear_roster_data),
 
     path('survey/<int:survey_id>/delete-all/', views.delete_survey_complete, name='delete_survey_complete'),
+    path('survey/assign-records/', views.assign_records, name='assign_records'),
 ]

@@ -1,0 +1,303 @@
+{% extends 'base.html' %}
+{% block content %}
+<style>
+    /* 드래그 앤 드롭 스타일 */
+    .user-card { cursor: grab; transition: all 0.2s; font-size: 0.9rem; z-index: 10; }
+    .user-card:active { cursor: grabbing; }
+    .area-drop-zone { 
+        border: 2px dashed #cbd5e1; 
+        background-color: #f8fafc;
+        transition: all 0.3s; 
+        min-height: 100px;
+    }
+    .drag-over { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+    .assigned-badge { font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px; }
+    .cursor-pointer { cursor: pointer; }
+    
+    /* 검색바 스타일 전용 */
+    .filter-section { background-color: #f1f5f9; border-radius: 8px; border: 1px solid #e2e8f0; }
+</style>
+
+<div class="container-fluid mt-4 px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="bi bi-person-workspace text-primary"></i> [4단계: 업무량배정] {{ survey.survey_name }}</h2>
+        <a href="{% url 'design_list' %}" class="btn btn-outline-secondary btn-sm">목록으로</a>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" id="assignmentTab" role="tablist">
+        <li class="nav-item">
+            <button class="nav-link active fw-bold" id="area-tab" data-bs-toggle="tab" data-bs-target="#area-panel" type="button">
+                1. 사용자별 권역배정 (조직도 구성)
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link fw-bold" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster-panel" type="button">
+                2. 사용자별 명부배정 (세부 업무할당)
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="assignmentTabContent">
+        <div class="tab-pane fade show active" id="area-panel">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card shadow-sm border-0 sticky-top" style="top: 20px;">
+                        <div class="card-header bg-dark text-white fw-bold py-3">조사원 풀 (전체 유저)</div>
+                        <div class="card-body overflow-auto" style="max-height: 700px;">
+                            <div id="user-pool">
+                                {% for u in users %}
+                                <div class="user-card p-2 border rounded bg-white mb-2 shadow-sm" 
+                                     draggable="true" ondragstart="drag(event)" 
+                                     data-user-id="{{ u.id }}" data-user-name="{{ u.username }}">
+                                    <i class="bi bi-person-circle me-2 text-secondary"></i><strong>{{ u.username }}</strong>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-9">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-light fw-bold">권역별 조사원 배정 현황</div>
+                        <div class="card-body bg-light" id="area-assignment-root">
+                            </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="roster-panel">
+            
+            <div class="filter-section p-3 mb-4 shadow-sm">
+                <form method="get" class="row g-2 align-items-end" id="searchForm">
+                    <input type="hidden" name="active_tab" value="roster">
+                    
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-secondary">조사원 ID/이름 검색</label>
+                        <input type="text" name="search_surveyor" class="form-control form-control-sm" 
+                               placeholder="조사원명 입력" value="{{ search_surveyor|default:'' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-secondary">배정 상태 필터</label>
+                        <select name="assignment_filter" class="form-select form-select-sm">
+                            <option value="ALL" {% if assignment_filter == 'ALL' %}selected{% endif %}>전체 명부 보기</option>
+                            <option value="UNASSIGNED" {% if assignment_filter == 'UNASSIGNED' %}selected{% endif %}>미배정 명부만</option>
+                            <option value="ASSIGNED" {% if assignment_filter == 'ASSIGNED' %}selected{% endif %}>배정 완료 명부만</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-dark btn-sm w-100 fw-bold">
+                            <i class="bi bi-search me-1"></i> 검색/필터 적용
+                        </button>
+                    </div>
+                    <div class="col-md-1">
+                        <a href="?active_tab=roster" class="btn btn-outline-secondary btn-sm w-100">초기화</a>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <span class="fw-bold text-primary"><i class="bi bi-check2-square me-1"></i>일괄 배정 실행</span>
+                        <select id="bulkUser" class="form-select form-select-sm" style="width: 220px;">
+                            <option value="">-- 배정할 조사원 선택 --</option>
+                            <option value="">[배정 취소/미배정 전환]</option>
+                            {% for s in surveyors %}
+                            <option value="{{ s.id }}">{{ s.username }} ({{ s.first_name|default:"조사원" }})</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-primary btn-sm px-3 fw-bold shadow-sm" onclick="assignToRecords()">
+                            배정 적용
+                        </button>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted d-block">내 관할: <strong>{{ user_area.area_name|default:"전체" }}</strong></small>
+                        <span class="badge bg-secondary">조회 결과: {{ data_records|length }}건</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover text-center align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 50px;"><input type="checkbox" class="form-check-input" onclick="toggleAll(this)"></th>
+                                <th style="width: 120px;">레코드ID</th>
+                                <th>소속 권역 (한글명)</th>
+                                <th style="width: 180px;">현재 담당 조사원</th>
+                                <th style="width: 100px;">진행상태</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for data in data_records %}
+                            <tr>
+                                <td><input type="checkbox" class="form-check-input row-check" value="{{ data.id }}"></td>
+                                <td><code>{{ data.respondent_id }}</code></td>
+                                <td>
+                                    <span class="fw-bold">{{ data.area.area_name }}</span>
+                                    <small class="text-muted d-block">{{ data.area.area_code }}</small>
+                                </td>
+                                <td>
+                                    {% if data.assigned_user %}
+                                    <span class="badge bg-primary px-2 py-1 shadow-xs">
+                                        <i class="bi bi-person-fill me-1"></i>{{ data.assigned_user.username }}
+                                    </span>
+                                    {% else %}
+                                    <span class="text-muted small italic">미배정</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="badge bg-light text-dark border">{{ data.status }}</span></td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="5" class="py-5 text-muted">조건에 맞는 명부 데이터가 없습니다.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+/* 1. 데이터 초기화 및 탭 유지 로직 */
+const areaData = [
+    {% for a in areas %}{ id: "{{ a.id }}", parent_id: "{{ a.parent_id|default:'' }}", code: "{{ a.area_code }}", name: "{{ a.area_name }}", level: {{ a.level }} }, {% endfor %}
+];
+const initialAssignments = [
+    {% for asg in area_assignments %}{ user_id: "{{ asg.user.id }}", user_name: "{{ asg.user.username }}", area_id: "{{ asg.area.id }}" }, {% endfor %}
+];
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 트리 렌더링
+    renderAreaTree();
+    initialAssignments.forEach(asg => addUserBadge(asg.area_id, asg.user_id, asg.user_name));
+
+    // URL 파라미터를 확인하여 검색 후 2번 탭 유지
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('active_tab') === 'roster') {
+        const rosterTabBtn = document.querySelector('#roster-tab');
+        if (rosterTabBtn) {
+            bootstrap.Tab.getOrCreateInstance(rosterTabBtn).show();
+        }
+    }
+});
+
+/* 2. 트리 렌더링 로직 */
+function renderAreaTree() {
+    const root = document.getElementById('area-assignment-root');
+    root.innerHTML = '';
+    const sortedAreas = [...areaData].sort((a, b) => a.level - b.level);
+    
+    sortedAreas.forEach(area => {
+        const html = `
+            <div class="area-node ms-${(area.level - 1) * 4} mb-3" id="wrapper-area-${area.id}">
+                <div class="area-drop-zone p-3 border rounded bg-white shadow-sm" 
+                     id="area-${area.id}" ondrop="drop(event)" ondragover="allowDrop(event)" ondragleave="clearStyle(event)" 
+                     data-area-id="${area.id}">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold"><i class="bi bi-geo-alt text-danger"></i> ${area.name} <small class="text-muted">(${area.code})</small></span>
+                        <span class="badge bg-secondary">Lv.${area.level}</span>
+                    </div>
+                    <div class="assigned-users-list d-flex flex-wrap gap-2" id="list-area-${area.id}"></div>
+                </div>
+                <div id="children-of-${area.id}" class="mt-2"></div>
+            </div>`;
+        
+        if (!area.parent_id || !document.getElementById(`children-of-${area.parent_id}`)) {
+            root.insertAdjacentHTML('beforeend', html);
+        } else {
+            document.getElementById(`children-of-${area.parent_id}`).insertAdjacentHTML('beforeend', html);
+        }
+    });
+}
+
+/* 3. 드래그 앤 드롭 핸들러 */
+function drag(ev) {
+    ev.dataTransfer.setData("user_id", ev.target.dataset.userId);
+    ev.dataTransfer.setData("user_name", ev.target.dataset.userName);
+}
+
+function allowDrop(ev) {
+    ev.preventDefault();
+    ev.currentTarget.classList.add('drag-over');
+}
+
+function clearStyle(ev) {
+    ev.currentTarget.classList.remove('drag-over');
+}
+
+async function drop(ev) {
+    ev.preventDefault();
+    clearStyle(ev);
+    
+    const userId = ev.dataTransfer.getData("user_id");
+    const userName = ev.dataTransfer.getData("user_name");
+    const areaId = ev.currentTarget.dataset.areaId;
+
+    if (!userId || !areaId) return;
+
+    const res = await fetch(window.location.href, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ user_id: userId, area_id: areaId }) 
+    });
+
+    if (res.ok) {
+        addUserBadge(areaId, userId, userName);
+    } else {
+        alert("배정 저장 중 오류가 발생했습니다.");
+    }
+}
+
+function addUserBadge(areaId, userId, userName) {
+    const list = document.getElementById(`list-area-${areaId}`);
+    if (!list || list.querySelector(`[data-u-id="${userId}"]`)) return;
+    const badge = `
+        <span class="badge bg-primary assigned-badge p-2 shadow-sm" data-u-id="${userId}">
+            ${userName} <i class="bi bi-x-circle ms-1 cursor-pointer" onclick="removeAreaAssignment('${userId}', '${areaId}')"></i>
+        </span>`;
+    list.insertAdjacentHTML('beforeend', badge);
+}
+
+async function removeAreaAssignment(userId, areaId) {
+    if(!confirm("배정을 취소하시겠습니까?")) return;
+    const res = await fetch(`/survey/{{ survey.id }}/remove-assignment/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ user_id: userId, area_id: areaId })
+    });
+    if (res.ok) document.querySelector(`#list-area-${areaId} [data-u-id="${userId}"]`).remove();
+}
+
+/* 4. 탭 2: 명부 일괄 배정 로직 */
+function toggleAll(master) {
+    document.querySelectorAll('.row-check').forEach(cb => cb.checked = master.checked);
+}
+
+async function assignToRecords() {
+    const userId = document.getElementById('bulkUser').value;
+    const selectedIds = Array.from(document.querySelectorAll('.row-check:checked')).map(cb => cb.value);
+
+    if (selectedIds.length === 0) return alert("배정할 대상을 리스트에서 선택해 주세요.");
+
+    const confirmMsg = userId 
+        ? `선택한 ${selectedIds.length}건을 배정하시겠습니까?`
+        : `선택한 ${selectedIds.length}건의 배정을 취소/미배정 처리하시겠습니까?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    const res = await fetch(`/survey/assign-records/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+        body: JSON.stringify({ user_id: userId, record_ids: selectedIds })
+    });
+
+    if (res.ok) {
+        alert("성공적으로 배정되었습니다.");
+        // 배정 후 검색 필터가 유지되도록 현재 URL로 새로고침
+        location.reload();
+    }
+}
+</script>
+{% endblock %}

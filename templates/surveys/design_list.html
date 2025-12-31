@@ -1,35 +1,66 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="container mt-2">
+<style>
+    /* 단계별 버튼 디자인 최적화 */
+    .step-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .btn-step { font-size: 0.85rem; padding: 10px 5px; font-weight: 600; }
+    .btn-disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+
+<div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <a href="{% url 'dashboard' %}" class="btn btn-outline-dark btn-sm me-2">
                 🏠 홈
             </a>
-            <h3 class="d-inline-block align-middle mb-0">조사설계 - 목록 선택</h3>
+            <h3 class="d-inline-block align-middle mb-0 fw-bold">통계 조사 통합 설계 센터</h3>
         </div>
     </div>
 
     <div class="row">
         {% for survey in surveys %}
-        <div class="col-md-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h5 class="card-title fw-bold text-primary">{{ survey.survey_name }}</h5>
-                    <h6 class="card-subtitle mb-3 text-muted">코드: {{ survey.survey_code }} | 연도: {{ survey.survey_year }}</h6>
+        <div class="col-12 mb-4">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 border-bottom-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-primary mb-2">Survey ID: {{ survey.survey_code }}</span>
+                            <h4 class="card-title fw-bold text-dark mb-0">{{ survey.survey_name }}</h4>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted d-block">조사연도: {{ survey.survey_year }}</small>
+                            <small class="text-muted d-block">진행차수: {{ survey.survey_degree }}차</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body bg-light rounded-bottom p-4">
+                    <h6 class="fw-bold mb-3 text-secondary"><i class="bi bi-gear-fill me-2"></i>단계별 설계 및 관리 로드맵</h6>
                     
-                    <div class="d-flex flex-wrap gap-2">
-                        <a href="{% url 'survey_field_design' survey.id %}" class="btn btn-outline-primary btn-sm">1. 항목설계</a>
-                        <a href="{% url 'survey_roster_design' survey.id %}" class="btn btn-outline-info btn-sm">2. 명부설계</a>
-                        <a href="{% url 'survey_questionnaire_design' survey.id %}" class="btn btn-outline-warning btn-sm">3. 조사표설계</a>
-                        <a href="{% url 'survey_edit_rule_design' survey.id %}" class="btn btn-outline-danger btn-sm">4. 내검규칙설계</a>
+                    <div class="step-container">
+                        <a href="{% url 'survey_area_design' survey.id %}" class="btn btn-dark btn-step">1. 권역설계</a>
+                        <a href="{% url 'survey_field_design' survey.id %}" class="btn btn-outline-primary btn-step">2. 항목설계</a>
+                        <a href="{% url 'survey_roster_design' survey.id %}" class="btn btn-outline-info btn-step">3. 명부설계</a>
+                        <a href="{% url 'survey_assignment' survey.id %}" class="btn btn-outline-secondary btn-step">4. 업무량배정</a>
+
+                        <a href="{% url 'survey_questionnaire_design' survey.id %}" class="btn btn-outline-warning btn-step">5. 조사표설계</a>
+                        
+                        <button class="btn btn-outline-light text-dark btn-step btn-disabled" disabled>
+                            6. 수집현황 <small class="d-block x-small">(준비중)</small>
+                        </button>
+
+                        <a href="{% url 'survey_edit_rule_design' survey.id %}" class="btn btn-outline-danger btn-sm">7. 내검규칙설계</a>
+
+                        <button class="btn btn-outline-light text-dark btn-step btn-disabled" disabled>
+                            8. 집계 <small class="d-block x-small">(준비중)</small>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
         {% empty %}
-        <div class="col-12 text-center py-5">
-            <p class="text-muted">등록된 조사가 없습니다.</p>
+        <div class="col-12 text-center py-5 border rounded bg-white">
+            <i class="bi bi-clipboard-x display-1 text-muted mb-3"></i>
+            <p class="text-muted fs-5">등록된 통계 조사 프로젝트가 없습니다.</p>
         </div>
         {% endfor %}
     </div>

@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    'django_vite',
     'surveys'
 ]
 
@@ -122,7 +122,7 @@ USE_TZ = True
 
 # settings.py 하단
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # 개발 환경에서 static 폴더 위치를 지정
 STATICFILES_DIRS = [
@@ -133,3 +133,14 @@ STATICFILES_DIRS = [
 LOGIN_REDIRECT_URL = '/' 
 # 로그아웃 시 이동할 페이지
 LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+# 3. Django-Vite 상세 설정
+# 빌드된 파일들이 모이는 실제 물리적 경로
+DJANGO_VITE_ASSETS_PATH = BASE_DIR / "static" / "dist"
+
+# 개발 모드 설정 (True일 때는 Vite 개발 서버(3000포트)를 보고, False일 때는 dist 폴더의 파일을 봄)
+DJANGO_VITE_DEV_MODE = DEBUG 
+
+# Vite 개발 서버 주소
+DJANGO_VITE_DEV_SERVER_HOST = "127.0.0.1"
+DJANGO_VITE_DEV_SERVER_PORT = 3000

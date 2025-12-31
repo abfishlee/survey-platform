@@ -1,0 +1,13 @@
+# Python/Django 관련
+venv/
+__pycache__/
+*.pyc
+db.sqlite3
+.env
+
+# Node.js/Vue 관련
+frontend/node_modules/
+frontend/dist/
+
+# 빌드 결과물 (서버에서 각자 생성할 것이므로 제외)
+static/dist/

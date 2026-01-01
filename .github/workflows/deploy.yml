@@ -20,6 +20,8 @@ jobs:
           port: 2222
           debug: true
           script: |
+            # [추가] Git 권한 문제 방지
+            git config --global --add safe.directory /srv/survey-platform/survey-platform
             cd /srv/survey-platform/survey-platform
             git pull origin main
 

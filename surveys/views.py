@@ -5,9 +5,10 @@ from django.contrib.auth.models import User
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, HttpResponse
+from django.views.decorators.http import require_POST
 from .models import (
     SurveyMaster, SurveyDesign, SurveyData, SurveyRoster, 
-    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser
+    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser, SurveyAnalysis
     )
 from django.db import transaction
 
@@ -690,4 +691,119 @@ def save_survey_response(request, data_id):
         return JsonResponse({'status': 'success'})
 
 
+# [화면] 7. 자료분석 페이지 (WebDataRocks를 띄울 껍데기)
+def collection_analysis_view(request, survey_id):
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    return render(request, 'surveys/collection_analysis.html', {
+        'survey': survey
+    })
 
+# [API] 피벗용 JSON 데이터 제공 (WebDataRocks가 이 데이터를 가져감)
+def survey_pivot_data_api(request, survey_id):
+    # 해당 조사의 모든 데이터 조회 (최적화를 위해 select_related 사용)
+    queryset = SurveyData.objects.filter(
+        roster__survey_id=survey_id
+    ).select_related('area', 'assigned_user', 'roster')
+
+    data_list = []
+    
+    for record in queryset:
+        # 기본 정보
+        flat_data = {
+            "ID": record.respondent_id,
+            "권역": record.area.area_name if record.area else "미지정",
+            "조사원": record.assigned_user.username if record.assigned_user else "미배정",
+            "상태": record.status, 
+            "명부명": record.roster.roster_name if record.roster else "",
+            "수정일": record.updated_at.strftime("%Y-%m-%d %H:%M")
+        }
+
+        # JSON 데이터 병합 (명부 데이터 + 응답 데이터)
+        if record.list_values:
+            flat_data.update(record.list_values)
+        
+        # 응답 데이터는 키 충돌 방지를 위해 'Q_' 접두어 붙이기 (선택사항)
+        if record.survey_values:
+            for k, v in record.survey_values.items():
+                flat_data[f"Q_{k}"] = v
+
+        data_list.append(flat_data)
+
+    return JsonResponse(data_list, safe=False)
+
+# [API] 분석 설정 저장하기
+@require_POST
+def save_analysis_config(request, survey_id):
+    try:
+        data = json.loads(request.body)
+        survey = get_object_or_404(SurveyMaster, pk=survey_id)
+        
+        # [수정됨] Analysis -> SurveyAnalysis 로 변경
+        SurveyAnalysis.objects.create(
+            survey=survey,
+            title=data.get('title'),
+            description=data.get('description', ''),
+            report_config=data.get('report') 
+        )
+        return JsonResponse({'status': 'success', 'message': '분석 주제가 저장되었습니다.'})
+    except Exception as e:
+        # 에러 로그를 콘솔에 찍어보면 디버깅에 좋습니다
+        print(f"저장 에러 발생: {str(e)}")
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=400)
+    
+# [API] 저장된 분석 목록 가져오기
+def get_analysis_list(request, survey_id):
+    analyses = SurveyAnalysis.objects.filter(survey_id=survey_id).order_by('-created_at')
+    data = [{
+        'id': a.id,
+        'title': a.title,
+        'description': a.description,
+        'created_at': a.created_at.strftime('%Y-%m-%d %H:%M'),
+        'report_config': a.report_config 
+    } for a in analyses]
+    return JsonResponse(data, safe=False)
+
+# [화면] 분석 목록 조회 페이지 (조사원/관리자용)
+def analysis_list_view(request, survey_id):
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    analyses = SurveyAnalysis.objects.filter(survey_id=survey_id).order_by('-created_at')
+    
+    # [추가] URL 파라미터 확인: mode가 'viewer'이면 True
+    is_viewer_mode = request.GET.get('mode') == 'viewer'
+
+    return render(request, 'surveys/analysis_list.html', {
+        'survey': survey,
+        'analyses': analyses,
+        'is_viewer_mode': is_viewer_mode  # [추가] 템플릿으로 전달
+    })
+
+# [API] 특정 분석 리포트의 설정(JSON)을 반환
+@login_required
+def get_analysis_detail(request, analysis_id):
+    analysis = get_object_or_404(SurveyAnalysis, pk=analysis_id)
+    
+    # [보안 체크]
+    is_assigned = SurveyAreaUser.objects.filter(survey=analysis.survey, user=request.user).exists()
+
+    if not request.user.is_superuser and not is_assigned:
+        return JsonResponse({'status': 'error', 'message': '권한이 없습니다.'}, status=403)
+
+    return JsonResponse({
+        'status': 'success',
+        'title': analysis.title,
+        'report_config': analysis.report_config
+    })
+
+# [화면] 분석 리포트 뷰어 페이지
+@login_required
+def analysis_viewer_view(request, analysis_id):
+    analysis = get_object_or_404(SurveyAnalysis, pk=analysis_id)
+    
+    # [보안 체크] 상위 조사에 대해 배정 여부 확인
+    # (이 줄의 들여쓰기가 위 'analysis =' 줄과 정확히 일치해야 합니다)
+    is_assigned = SurveyAreaUser.objects.filter(survey=analysis.survey, user=request.user).exists()
+
+    if not request.user.is_superuser and not is_assigned:
+         return HttpResponse("조회 권한이 없습니다.", status=403)
+        
+    return render(request, 'surveys/analysis_viewer.html', {'analysis': analysis})

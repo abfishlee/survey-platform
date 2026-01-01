@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<style>
+    /* 카드 호버 효과: 마우스를 올리면 살짝 떠오르는 효과 */
+    .hover-shadow { transition: transform 0.2s, box-shadow 0.2s; }
+    .hover-shadow:hover { transform: translateY(-5px); box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important; }
+    
+    /* 설명 텍스트가 너무 길면 ... 으로 자르기 */
+    .text-truncate-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <div>
+            <h3 class="mb-1 fw-bold">
+                <i class="bi bi-collection-play-fill text-primary me-2"></i>분석 리포트 목록
+            </h3>
+            <p class="text-muted small mb-0">
+                <strong>{{ survey.survey_name }}</strong>의 저장된 분석 결과를 조회합니다.
+            </p>
+        </div>
+        <div>
+            {% if not is_viewer_mode %}
+            <a href="{% url 'collection_analysis' survey.id %}" class="btn btn-primary btn-sm me-2 shadow-sm">
+                <i class="bi bi-plus-lg me-1"></i>새 분석 만들기
+            </a>
+            {% endif %}
+
+            {% if is_viewer_mode %}
+                <a href="{% url 'collection_list' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>조사 목록으로
+                </a>
+            {% else %}
+                <a href="{% url 'collection_analysis' survey.id %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>설계 화면으로
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        {% for analysis in analyses %}
+        <div class="col-md-4 col-sm-6">
+            <div class="card h-100 shadow-sm border-0 hover-shadow">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="badge bg-light text-secondary border">No. {{ analysis.id }}</span>
+                        <small class="text-muted">
+                            <i class="bi bi-clock me-1"></i>{{ analysis.created_at|date:"Y-m-d H:i" }}
+                        </small>
+                    </div>
+                    
+                    <h5 class="card-title fw-bold text-dark mb-2">
+                        {{ analysis.title }}
+                    </h5>
+                    
+                    <p class="card-text text-secondary small text-truncate-2">
+                        {{ analysis.description|default:"추가 설명이 없습니다." }}
+                    </p>
+                </div>
+                
+                <div class="card-footer bg-white border-top-0 pt-0 pb-3">
+                    <a href="{% url 'analysis_viewer' analysis.id %}" class="btn btn-outline-primary w-100 fw-bold">
+                        <i class="bi bi-eye-fill me-1"></i>리포트 조회
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {% empty %}
+        <div class="col-12">
+            <div class="text-center py-5 bg-light rounded-3 border border-dashed">
+                <i class="bi bi-folder-x display-1 text-muted opacity-50 mb-3"></i>
+                <h5 class="text-muted fw-bold">저장된 분석 리포트가 없습니다.</h5>
+                
+                {% if not is_viewer_mode %}
+                <p class="small text-secondary mb-4">새로운 분석 주제를 설계하고 저장해보세요!</p>
+                <a href="{% url 'collection_analysis' survey.id %}" class="btn btn-primary">
+                    <i class="bi bi-bar-chart-fill me-1"></i>지금 분석하러 가기
+                </a>
+                {% else %}
+                <p class="small text-secondary mb-4">아직 등록된 분석 리포트가 없습니다.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

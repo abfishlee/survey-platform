@@ -105,3 +105,17 @@ class SurveyData(models.Model):
     survey_values = models.JSONField(default=dict, verbose_name="조사표답변")
     status = models.CharField(max_length=20, default='READY')
     updated_at = models.DateTimeField(auto_now=True)
+
+class SurveyAnalysis(models.Model):
+    survey = models.ForeignKey(SurveyMaster, on_delete=models.CASCADE, verbose_name="조사")
+    title = models.CharField(max_length=200, verbose_name="분석 제목")
+    description = models.TextField(blank=True, verbose_name="설명")
+    
+    # [핵심] WebDataRocks의 report 설정 전체를 저장 (행, 열, 필터 등)
+    report_config = models.JSONField(verbose_name="리포트 설정(JSON)")
+    
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="생성일")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="수정일")
+
+    def __str__(self):
+        return f"[{self.survey.survey_name}] {self.title}"

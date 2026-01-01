@@ -1,45 +1,40 @@
-import { defineConfig } from 'vite'
-import vue from '@vitejs/plugin-vue'
-import path from 'path'
+import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [vue()],
+  base: '/static/',
   
-  // 1. root를 frontend 폴더로 명시 (기본값임)
-  root: path.resolve(__dirname),
-
-  // 2. 개발 시 기본 경로 설정
-  base: '/',
-
+  // [여기!] 서버 설정 추가
   server: {
-    host: '127.0.0.1',
-    port: 3000,
-    strictPort: true,
-    // Django와의 통신을 위해 허용
-    origin: 'http://127.0.0.1:3000',
-    cors: true,
-    hmr: {
-      host: '127.0.0.1',
-    },
+    host: '127.0.0.1', // localhost로 명시
+    port: 3000,        // 3000번 포트 강제 사용
+    strictPort: true,  // 3000번이 이미 사용 중이면 에러 발생 (다른 포트로 넘어가지 않음)
+    cors: true,        // Django에서 접근 가능하도록 CORS 허용
+    origin: 'http://127.0.0.1:3000', // 에셋 출처 명시
   },
 
-  // 중복되었던 build 블록을 하나로 합쳤습니다.
   build: {
-    outDir: path.resolve(__dirname, '../static/dist'),
+    outDir: '../static/dist',
     emptyOutDir: true,
-    manifest: true,
     rollupOptions: {
-      // 멀티 엔트리 설정: 설계(main)와 수집(collector) 진입점을 모두 정의합니다.
       input: {
-        main: path.resolve(__dirname, 'src/main.js'),
-        collector: path.resolve(__dirname, 'src/collector-main.js'),
+        survey: resolve(__dirname, 'src/survey-main.js'),
+        collector: resolve(__dirname, 'src/collector-main.js'),
+        analysis: resolve(__dirname, 'src/analysis-main.js'),
+        viewer: resolve(__dirname, 'src/viewer-main.js')
       },
-    },
+      output: {
+        entryFileNames: `assets/[name].js`,
+        chunkFileNames: `assets/[name].js`,
+        assetFileNames: `assets/[name].[ext]`
+      }
+    }
   },
-  
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': resolve(__dirname, 'src'),
     },
   },
-})
+});

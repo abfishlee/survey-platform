@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load django_vite %}
+
+{% block content %}
+<div class="container-fluid py-4" style="max-width: 1800px;">
+    <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+        <h3 class="fw-bold text-dark m-0">
+            <i class="bi bi-bar-chart-line-fill text-danger me-2"></i> [7단계: 자료분석] {{ survey.survey_name }}
+        </h3>
+        <a href="{% url 'design_list' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-list me-1"></i>목록으로
+        </a>
+    </div>
+
+    <div id="app-analysis">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">분석 도구를 불러오는 중...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.SURVEY_ID_FROM_DJANGO = {{ survey.id }};
+</script>
+
+{% vite_hmr_client %}
+{% vite_asset 'src/analysis-main.js' %}
+
+{% endblock %}

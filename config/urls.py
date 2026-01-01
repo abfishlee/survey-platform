@@ -49,4 +49,24 @@ urlpatterns = [
 
     path('survey/<int:survey_id>/delete-all/', views.delete_survey_complete, name='delete_survey_complete'),
     path('survey/assign-records/', views.assign_records, name='assign_records'),
+
+    # [추가] 7. 자료분석 화면
+    path('survey/<int:survey_id>/collection-analysis/', views.collection_analysis_view, name='collection_analysis'),
+
+    # [추가] 데이터 API
+    path('survey/<int:survey_id>/pivot-data/', views.survey_pivot_data_api, name='survey_pivot_data_api'),
+
+    # [추가] 분석 저장 API
+    path('survey/<int:survey_id>/analysis/save/', views.save_analysis_config, name='save_analysis_config'),
+    
+    # [추가] 분석 목록 API (Vue에서 로딩용)
+    path('survey/<int:survey_id>/analysis/list-api/', views.get_analysis_list, name='get_analysis_list'),
+
+    # [추가] 분석 목록 화면 (조사원이 볼 화면)
+    path('survey/<int:survey_id>/analysis/list/', views.analysis_list_view, name='analysis_list_view'),
+
+  # [수정 후] - 앞에 'survey/'를 붙여서 경로를 맞춰줍니다!
+    path('survey/analysis/<int:analysis_id>/view/', views.analysis_viewer_view, name='analysis_viewer'),
+    path('survey/analysis/<int:analysis_id>/json/', views.get_analysis_detail, name='get_analysis_detail'),
+    
 ]

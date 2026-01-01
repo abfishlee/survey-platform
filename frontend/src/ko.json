@@ -1,0 +1,65 @@
+{
+  "grid": {
+    "total": "합계",
+    "totals": "소계",
+    "grandTotal": "총계",
+    "blankMember": "(공백)",
+    "dateInvalid": "잘못된 날짜",
+    "reportInformation": "보고서 정보"
+  },
+  "toolbar": {
+    "open": "열기",
+    "save": "저장",
+    "export": "내보내기",
+    "format": "서식",
+    "options": "옵션",
+    "fields": "필드",
+    "connect": "연결",
+    "fullscreen": "전체화면",
+    "minimize": "축소"
+  },
+  "buttons": {
+    "apply": "적용",
+    "cancel": "취소",
+    "ok": "확인",
+    "yes": "예",
+    "no": "아니요",
+    "load": "불러오기"
+  },
+  "tooltips": {
+    "expand": "확장",
+    "collapse": "축소",
+    "sort": "정렬",
+    "remove": "제거",
+    "filter": "필터",
+    "close": "닫기"
+  },
+  "popups": {
+    "fields": {
+      "title": "필드 목록 선택",
+      "search": "검색",
+      "all": "모든 필드",
+      "rows": "행 (Rows)",
+      "columns": "열 (Columns)",
+      "measures": "값 (Values)",
+      "filters": "필터 (Filters)",
+      "deferUpdate": "업데이트 지연",
+      "apply": "적용"
+    },
+    "options": {
+      "title": "옵션 설정",
+      "general": "일반",
+      "grid": "그리드",
+      "charts": "차트",
+      "showTotals": "소계 표시",
+      "showGrandTotals": "총계 표시",
+      "compactForm": "컴팩트 레이아웃"
+    },
+    "format": {
+      "title": "서식 설정",
+      "currency": "통화 기호",
+      "isPercent": "백분율로 표시",
+      "decimalPlaces": "소수점 자릿수"
+    }
+  }
+}

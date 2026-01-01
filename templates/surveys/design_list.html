@@ -37,23 +37,34 @@
                     <h6 class="fw-bold mb-3 text-secondary"><i class="bi bi-gear-fill me-2"></i>단계별 설계 및 관리 로드맵</h6>
                     
                     <div class="step-container">
-                        <a href="{% url 'survey_area_design' survey.id %}" class="btn btn-dark btn-step">1. 권역설계</a>
-                        <a href="{% url 'survey_field_design' survey.id %}" class="btn btn-outline-primary btn-step">2. 항목설계</a>
-                        <a href="{% url 'survey_roster_design' survey.id %}" class="btn btn-outline-info btn-step">3. 명부설계</a>
-                        <a href="{% url 'survey_assignment' survey.id %}" class="btn btn-outline-secondary btn-step">4. 업무량배정</a>
+                        <a href="{% url 'survey_area_design' survey.id %}" class="btn btn-outline-dark btn-step">
+                            <i class="bi bi-geo-alt-fill me-1"></i>1. 권역설계
+                        </a>
 
-                        <a href="{% url 'survey_questionnaire_design' survey.id %}" class="btn btn-outline-warning btn-step">5. 조사표설계</a>
+                        <a href="{% url 'survey_field_design' survey.id %}" class="btn btn-outline-primary btn-step">
+                            <i class="bi bi-list-columns-reverse me-1"></i>2. 항목설계
+                        </a>
+
+                        <a href="{% url 'survey_roster_design' survey.id %}" class="btn btn-outline-info btn-step text-dark">
+                            <i class="bi bi-people-fill me-1"></i>3. 명부설계
+                        </a>
+
+                        <a href="{% url 'survey_assignment' survey.id %}" class="btn btn-outline-secondary btn-step">
+                            <i class="bi bi-person-badge-fill me-1"></i>4. 업무량배정
+                        </a>
+
+                        <a href="{% url 'survey_questionnaire_design' survey.id %}" class="btn btn-outline-warning btn-step text-dark">
+                            <i class="bi bi-file-earmark-text-fill me-1"></i>5. 조사표설계
+                        </a>
                         
-                        <button class="btn btn-outline-light text-dark btn-step btn-disabled" disabled>
-                            6. 수집현황 <small class="d-block x-small">(준비중)</small>
-                        </button>
+                        <a href="{% url 'survey_edit_rule_design' survey.id %}" class="btn btn-outline-danger btn-step">
+                            <i class="bi bi-shield-check me-1"></i>6. 내검규칙
+                        </a>
 
-                        <a href="{% url 'survey_edit_rule_design' survey.id %}" class="btn btn-outline-danger btn-sm">7. 내검규칙설계</a>
-
-                        <button class="btn btn-outline-light text-dark btn-step btn-disabled" disabled>
-                            8. 집계 <small class="d-block x-small">(준비중)</small>
-                        </button>
-                    </div>
+                        <a href="{% url 'collection_analysis' survey.id %}" class="btn btn-outline-success btn-step fw-bold">
+                            <i class="bi bi-graph-up-arrow me-1"></i>7. 자료분석
+                        </a>
+                    </div>   
                 </div>
             </div>
         </div>

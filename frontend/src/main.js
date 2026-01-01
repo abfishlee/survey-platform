@@ -13,7 +13,7 @@ import 'bootstrap-icons/font/bootstrap-icons.css'
 import 'animate.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js' // 모달, 툴팁 등 동작 필수
 
-// Ag-Grid 스타일
+// Ag-Grid 스타일!
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 

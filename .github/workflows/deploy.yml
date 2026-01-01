@@ -20,14 +20,24 @@ jobs:
           port: 2222
           debug: true
           script: |
-            # [추가] Git 권한 문제 방지
+            # 0. [중요] 권한 강제 회수 (root 소유 파일이 섞여 있어도 배포 계정 소유로 변경)
+            # 이 명령어가 작동하려면 배포 유저가 비밀번호 없이 sudo를 쓸 수 있어야 합니다.
+            sudo chown -R $USER:$USER /srv/survey-platform/survey-platform
+
+            # Git 안전 디렉토리 설정
             git config --global --add safe.directory /srv/survey-platform/survey-platform
+            
+            # 프로젝트 폴더 이동
             cd /srv/survey-platform/survey-platform
+            
+            # 소스 업데이트
             git pull origin main
 
-            # 1. 프론트엔드 빌드 추가
+            # 1. 프론트엔드 빌드
             echo "--- 프론트엔드 빌드 시작 ---"
             cd frontend
+            # 권한 문제 방지를 위해 모듈 클린 설치 권장
+            rm -rf node_modules package-lock.json 
             npm install
             npm run build
             cd ..
@@ -37,7 +47,7 @@ jobs:
             pip install -r requirements.txt
             python manage.py migrate
 
-            # 3. Django 정적 파일 수집 추가 (Vue 빌드 파일을 Django static으로 복사)
+            # 3. Django 정적 파일 수집
             echo "--- 정적 파일 수집(collectstatic) 시작 ---"
             python manage.py collectstatic --noinput
 

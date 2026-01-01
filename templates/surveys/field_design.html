@@ -23,16 +23,16 @@
     <div class="tab-content border border-top-0 p-4 bg-white shadow-sm rounded-bottom" id="designTabContent">
         <div class="tab-pane fade show active" id="list-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5 class="text-secondary">명부 항목 속성 정의</h5>
-                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 신규 항목 추가</button>
+                <h5 class="text-secondary"><i class="bi bi-database-fill"></i> 명부 항목 속성 (DB 스키마)</h5>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addItem('list')">+ 신규 명부 항목 추가</button>
             </div>
             <div id="list-container"></div>
         </div>
 
         <div class="tab-pane fade" id="survey-schema" role="tabpanel">
             <div class="d-flex justify-content-between mb-3">
-                <h5 class="text-secondary">조사표 문항 속성 정의</h5>
-                <button type="button" class="btn btn-outline-success btn-sm" onclick="addItem('survey')">+ 조사 문항 추가</button>
+                <h5 class="text-secondary"><i class="bi bi-clipboard-check-fill"></i> 조사표 문항 속성 (질문 구조)</h5>
+                <button type="button" class="btn btn-outline-success btn-sm" onclick="addItem('survey')">+ 신규 조사 문항 추가</button>
             </div>
             <div id="survey-container"></div>
         </div>
@@ -41,17 +41,25 @@
 
 <script>
 /**
- * 1. 데이터 초기화
+ * 1. 초기 데이터 로드
  */
 let listSchema = {{ list_fields|json_encode|safe|default:"[]" }};
 let surveySchema = {{ survey_questions|json_encode|safe|default:"[]" }};
 
 document.addEventListener('DOMContentLoaded', () => {
-    try {
-        renderItems('list');
-        renderItems('survey');
-    } catch (e) {
-        console.error("초기 렌더링 중 오류:", e);
+    renderItems('list');
+    renderItems('survey');
+
+    // 2. [추가] 저장된 탭 복원 로직
+    const activeTab = localStorage.getItem('activeTab');
+    if (activeTab) {
+        const tabTrigger = document.querySelector(`button[data-bs-target="${activeTab}"]`);
+        if (tabTrigger) {
+            const tab = new bootstrap.Tab(tabTrigger);
+            tab.show();
+        }
+        // 사용 후 삭제 (다음에 새로 들어올 때는 기본탭이 뜨도록)
+        localStorage.removeItem('activeTab');
     }
 });
 
@@ -59,32 +67,29 @@ document.addEventListener('DOMContentLoaded', () => {
  * 2. 항목 추가 함수
  */
 function addItem(type) {
-    const uniqueId = `item_${Date.now()}`;
-    
+    const uniqueId = `v_${Date.now()}`;
     if (type === 'list') {
-        listSchema.push({ id: uniqueId, label: '신규 항목', type: 'text', length: 50 });
+        listSchema.push({ id: uniqueId, label: '신규 명부항목', type: 'text', length: 50 });
     } else {
-        // 테이블 관련 기본 속성 추가
         surveySchema.push({ 
             id: uniqueId, 
-            label: '신규 질문', 
+            label: '신규 질문 내용', 
             type: 'text', 
+            length: 100, // [추가] 조사 문항 주관식 기본 길이 설정
             options: '',
-            columns: ['항목1', '항목2'], // 테이블 기본 컬럼
-            useRowHeaders: false,
-            rowLabels: ''
+            tableType: 'flexible',
+            subItems: []
         });
     }
     renderItems(type);
 }
 
 /**
- * 3. 화면 렌더링 함수
+ * 3. 통합 렌더링 함수
  */
 function renderItems(type) {
     const container = document.getElementById(`${type}-container`);
     const data = (type === 'list') ? listSchema : surveySchema;
-    
     if (!container) return;
     container.innerHTML = '';
 
@@ -95,167 +100,198 @@ function renderItems(type) {
 
     data.forEach((item, index) => {
         if (type === 'list') {
-            container.innerHTML += `
-                <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light shadow-sm">
-                    <div class="col-md-3">
-                        <label class="small fw-bold text-primary">ID (물리명)</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItemValue('list', ${index}, 'id', this.value)">
-                    </div>
-                    <div class="col-md-4">
-                        <label class="small fw-bold">항목명 (논리명)</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItemValue('list', ${index}, 'label', this.value)">
-                    </div>
-                    <div class="col-md-2">
-                        <label class="small fw-bold">타입</label>
-                        <select class="form-select form-select-sm" onchange="updateItemValue('list', ${index}, 'type', this.value)">
-                            <option value="text" ${item.type==='text'?'selected':''}>문자</option>
-                            <option value="number" ${item.type==='number'?'selected':''}>숫자</option>
-                        </select>
-                    </div>
-                    <div class="col-md-1">
-                        <label class="small fw-bold">길이</label>
-                        <input type="number" class="form-control form-control-sm" value="${item.length || 50}" onchange="updateItemValue('list', ${index}, 'length', this.value)">
-                    </div>
-                    <div class="col-md-2 text-end">
-                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem('${type}', ${index})">
-                            <i class="bi bi-trash"></i> 삭제
-                        </button>
-                    </div>
-                </div>`;
+            container.innerHTML += renderListRow(item, index);
         } else {
-            const isChoice = ['radio', 'checkbox'].includes(item.type);
-            const isTable = item.type === 'table';
-
-            container.innerHTML += `
-                <div class="row g-2 mb-3 align-items-end border p-3 rounded shadow-sm" style="background-color: ${isTable ? '#f0f4ff' : '#f8fff9'};">
-                    <div class="col-md-2">
-                        <label class="small fw-bold text-success">문항ID</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateItemValue('survey', ${index}, 'id', this.value)">
-                    </div>
-                    <div class="col-md-5">
-                        <label class="small fw-bold text-success">질문 내용</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateItemValue('survey', ${index}, 'label', this.value)">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="small fw-bold text-success">응답 형식</label>
-                        <select class="form-select form-select-sm" onchange="changeSurveyType(${index}, this.value)">
-                            <option value="text" ${item.type==='text'?'selected':''}>단답형</option>
-                            <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
-                            <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일)</option>
-                            <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(중복)</option>
-                            <option value="table" ${item.type==='table'?'selected':''}>표/테이블</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2 text-end">
-                        <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem('${type}', ${index})">
-                            <i class="bi bi-trash"></i> 삭제
-                        </button>
-                    </div>
-
-                    ${isChoice ? `
-                    <div class="col-12 mt-2">
-                        <label class="small fw-bold text-muted">선택지 (콤마[,]로 구분)</label>
-                        <input type="text" class="form-control form-control-sm" value="${item.options || ''}" onchange="updateItemValue('survey', ${index}, 'options', this.value)" placeholder="예: 예, 아니오, 모르겠다">
-                    </div>` : ''}
-
-                    ${isTable ? `
-                    <div class="col-12 mt-2 p-2 border rounded bg-white shadow-sm">
-                        <div class="row g-2">
-                            <div class="col-md-12">
-                                <label class="small fw-bold text-primary"><i class="bi bi-table"></i> 열(Header) 설정 (콤마[,]로 구분)</label>
-                                <input type="text" class="form-control form-control-sm" 
-                                       value="${Array.isArray(item.columns) ? item.columns.join(', ') : item.columns}" 
-                                       onchange="updateTableField(${index}, 'columns', this.value)" 
-                                       placeholder="예: 이름, 나이, 성별">
-                            </div>
-                            <div class="col-md-4 mt-2">
-                                <div class="form-check form-switch mt-2">
-                                    <input class="form-check-input" type="checkbox" id="rowHead_${index}" 
-                                           ${item.useRowHeaders ? 'checked' : ''} 
-                                           onchange="updateTableField(${index}, 'useRowHeaders', this.checked)">
-                                    <label class="form-check-label small fw-bold" for="rowHead_${index}">표측(행 머리글) 사용</label>
-                                </div>
-                            </div>
-                            <div class="col-md-8 mt-2" id="rowLabelsBox_${index}" style="display: ${item.useRowHeaders ? 'block' : 'none'}">
-                                <label class="small fw-bold text-primary">표측(왼쪽 질의) 입력 (콤마[,]로 구분)</label>
-                                <input type="text" class="form-control form-control-sm" 
-                                       value="${Array.isArray(item.rowLabels) ? item.rowLabels.join(', ') : item.rowLabels}" 
-                                       onchange="updateTableField(${index}, 'rowLabels', this.value)" 
-                                       placeholder="예: 가구주, 배우자, 자녀1">
-                            </div>
-                        </div>
-                    </div>` : ''}
-                </div>`;
+            container.innerHTML += renderSurveyRow(item, index);
         }
     });
 }
 
 /**
- * 4. 테이블 전용 필드 업데이트 유틸리티
+ * 4. 명부 항목 UI 렌더러 (타입, 길이 필드 복원 완료)
  */
-function updateTableField(index, field, value) {
-    if (field === 'useRowHeaders') {
-        surveySchema[index][field] = value;
-        // 스위치 켜짐/꺼짐에 따라 표측 라벨 입력창 표시 제어
-        document.getElementById(`rowLabelsBox_${index}`).style.display = value ? 'block' : 'none';
-    } else {
-        // 콤마로 구분된 입력을 배열로 변환
-        surveySchema[index][field] = value.split(',').map(s => s.trim()).filter(s => s !== '');
-    }
+function renderListRow(item, index) {
+    return `
+        <div class="row g-2 mb-2 align-items-end border p-3 rounded bg-light shadow-sm">
+            <div class="col-md-3">
+                <label class="small fw-bold text-primary">변수 ID</label>
+                <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateVal('list', ${index}, 'id', this.value)">
+            </div>
+            <div class="col-md-4">
+                <label class="small fw-bold text-primary">항목명(라벨)</label>
+                <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateVal('list', ${index}, 'label', this.value)">
+            </div>
+            <div class="col-md-2">
+                <label class="small fw-bold text-primary">데이터 타입</label>
+                <select class="form-select form-select-sm" onchange="updateVal('list', ${index}, 'type', this.value)">
+                    <option value="text" ${item.type==='text'?'selected':''}>문자형</option>
+                    <option value="number" ${item.type==='number'?'selected':''}>숫자형</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <label class="small fw-bold text-primary">길이</label>
+                <input type="number" class="form-control form-control-sm" value="${item.length || 50}" onchange="updateVal('list', ${index}, 'length', this.value)">
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-sm text-danger" onclick="removeItem('list', ${index})"><i class="bi bi-trash"></i> 삭제</button>
+            </div>
+        </div>`;
 }
 
-function updateItemValue(type, index, field, value) {
-    if (type === 'list') {
-        listSchema[index][field] = value;
-    } else {
-        surveySchema[index][field] = value;
-    }
+/**
+ * 5. 조사 문항 UI 렌더러 (주관식/객관식 복원 및 용어 변경 완료)
+ */
+function renderSurveyRow(item, index) {
+const isChoice = ['radio', 'checkbox'].includes(item.type);
+    const isTable = item.type === 'table';
+    const isSubjective = ['text', 'number'].includes(item.type); // [추가] 주관식 여부 확인
+
+    return `
+        <div class="row g-2 mb-3 align-items-end border p-3 rounded shadow-sm ${isTable ? 'bg-light bg-gradient' : ''}" 
+             style="${isTable ? 'border-left: 8px solid #0056b3 !important;' : 'border-left: 5px solid #198754;'}">
+            <div class="col-md-2">
+                <label class="small fw-bold ${isTable ? 'text-primary' : 'text-success'}">${isTable ? '테이블ID' : '문항ID'}</label>
+                <input type="text" class="form-control form-control-sm" value="${item.id}" onchange="updateVal('survey', ${index}, 'id', this.value)">
+            </div>
+            <div class="col-md-4"> <label class="small fw-bold">질의문 (문구)</label>
+                <input type="text" class="form-control form-control-sm" value="${item.label}" onchange="updateVal('survey', ${index}, 'label', this.value)">
+            </div>
+            <div class="col-md-3">
+                <label class="small fw-bold">응답 형식</label>
+                <select class="form-select form-select-sm" onchange="changeType(${index}, this.value)">
+                    <option value="text" ${item.type==='text'?'selected':''}>주관식(문자형)</option>
+                    <option value="number" ${item.type==='number'?'selected':''}>주관식(숫자형)</option>
+                    <option value="radio" ${item.type==='radio'?'selected':''}>객관식(단일선택)</option>
+                    <option value="checkbox" ${item.type==='checkbox'?'selected':''}>객관식(다중선택)</option>
+                    <option value="table" ${item.type==='table'?'selected':''}>★ 테이블(그룹형)</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                ${isSubjective ? `
+                    <label class="small fw-bold">길이</label>
+                    <input type="number" class="form-control form-control-sm" value="${item.length || 100}" onchange="updateVal('survey', ${index}, 'length', this.value)">
+                ` : ''}
+            </div>
+            <div class="col-md-2 text-end">
+                <button type="button" class="btn btn-sm text-danger" onclick="removeItem('survey', ${index})"><i class="bi bi-trash"></i> 삭제</button>
+            </div>
+
+            ${isTable ? renderTableManager(item, index) : (isChoice ? renderOptions(item, index) : '')}
+        </div>`;
 }
 
-function changeSurveyType(index, value) {
+/**
+ * 6. 테이블 상세 설정 UI
+ */
+function renderTableManager(item, index) {
+    const subItems = item.subItems || []; 
+    
+    return `
+    <div class="col-12 mt-3 p-3 bg-white border rounded">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0 text-primary"><i class="bi bi-columns-gutters"></i> 테이블 헤더(컬럼) 항목 관리</h6>
+            <button type="button" class="btn btn-xs btn-primary" onclick="addSubItem(${index})">+ 헤더 추가</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered mb-2">
+                <thead class="bg-light text-center">
+                    <tr><th>헤더 ID</th><th>헤더 라벨(표시명)</th><th>타입</th><th style="width:50px">삭제</th></tr>
+                </thead>
+                <tbody>
+                    ${subItems.length > 0 ? subItems.map((sub, sIdx) => `
+                        <tr>
+                            <td><input type="text" class="form-control form-control-sm" value="${sub.id}" onchange="updateSubVal(${index}, ${sIdx}, 'id', this.value)"></td>
+                            <td><input type="text" class="form-control form-control-sm" value="${sub.label}" onchange="updateSubVal(${index}, ${sIdx}, 'label', this.value)"></td>
+                            <td>
+                                <select class="form-select form-select-sm" onchange="updateSubVal(${index}, ${sIdx}, 'type', this.value)">
+                                    <option value="text" ${sub.type==='text'?'selected':''}>문자형</option>
+                                    <option value="number" ${sub.type==='number'?'selected':''}>숫자형</option>
+                                </select>
+                            </td>
+                            <td class="text-center"><button type="button" class="btn btn-link text-danger p-0" onclick="removeSubItem(${index}, ${sIdx})"><i class="bi bi-x-circle"></i></button></td>
+                        </tr>
+                    `).join('') : '<tr><td colspan="4" class="text-center py-2 text-muted">헤더를 추가해주세요.</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-6">
+                <label class="small fw-bold text-primary">테이블 유형 선택</label>
+                <select class="form-select form-select-sm border-primary" onchange="updateVal('survey', ${index}, 'tableType', this.value); renderItems('survey');">
+                    <option value="flexible" ${item.tableType==='flexible'?'selected':''}>1. 유연형(행추가/삭제 버튼 제공)</option>
+                    <option value="fixed" ${item.tableType==='fixed'?'selected':''}>2. 고정형(지정된 행수만큼 고정)</option>
+                </select>
+                <small class="text-muted">* 표측(좌측 질의) 및 행 개수 설정은 '조사표 설계' 단계에서 진행합니다.</small>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderOptions(item, index) {
+    return `
+    <div class="col-12 mt-2 bg-light p-2 border rounded">
+        <label class="small fw-bold text-muted">객관식 선택지 설정 (콤마[,] 구분)</label>
+        <input type="text" class="form-control form-control-sm" value="${item.options || ''}" 
+               onchange="updateVal('survey', ${index}, 'options', this.value)" placeholder="예: 만족, 보통, 불만족">
+    </div>`;
+}
+
+/**
+ * 7. 유틸리티 및 저장 함수
+ */
+function updateVal(type, index, field, value) {
+    if (type === 'list') listSchema[index][field] = value;
+    else surveySchema[index][field] = value;
+}
+
+function addSubItem(index) {
+    if (!surveySchema[index].subItems) surveySchema[index].subItems = [];
+    const parentId = surveySchema[index].id;
+    surveySchema[index].subItems.push({ 
+        id: `${parentId}_${surveySchema[index].subItems.length + 1}`, 
+        label: '신규헤더', 
+        type: 'text' 
+    });
+    renderItems('survey');
+}
+
+function removeSubItem(pIdx, sIdx) {
+    surveySchema[pIdx].subItems.splice(sIdx, 1);
+    renderItems('survey');
+}
+
+function updateSubVal(pIdx, sIdx, field, value) {
+    surveySchema[pIdx].subItems[sIdx][field] = value;
+}
+
+function changeType(index, value) {
     surveySchema[index].type = value;
-    // 테이블 타입으로 변경 시 초기 배열 구조 보장
     if (value === 'table') {
-        if (!surveySchema[index].columns) surveySchema[index].columns = ['항목1', '항목2'];
-        if (surveySchema[index].useRowHeaders === undefined) surveySchema[index].useRowHeaders = false;
-        if (!surveySchema[index].rowLabels) surveySchema[index].rowLabels = [];
+        if (!surveySchema[index].subItems) surveySchema[index].subItems = [];
+        if (!surveySchema[index].tableType) surveySchema[index].tableType = 'flexible';
     }
     renderItems('survey');
 }
 
 function removeItem(type, index) {
     if (!confirm('정말 삭제하시겠습니까?')) return;
-    if (type === 'list') {
-        listSchema.splice(index, 1);
-    } else {
-        surveySchema.splice(index, 1);
-    }
+    if (type === 'list') listSchema.splice(index, 1);
+    else surveySchema.splice(index, 1);
     renderItems(type);
 }
 
-/**
- * 5. 최종 저장 기능
- */
 async function saveDesign() {
     try {
         const response = await fetch(window.location.href, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
-            body: JSON.stringify({ 
-                list_schema: listSchema, 
-                survey_schema: surveySchema 
-            })
+            body: JSON.stringify({ list_schema: listSchema, survey_schema: surveySchema })
         });
         const result = await response.json();
-        if (response.ok) {
-            alert(result.message || "성공적으로 저장되었습니다.");
-            location.reload();
-        } else {
-            alert("저장 실패");
-        }
-    } catch (e) {
-        alert("서버 통신 중 오류가 발생했습니다.");
-    }
+        if (response.ok) { alert("저장되었습니다."); location.reload(); }
+        else alert("저장 실패");
+    } catch (e) { alert("통신 오류"); }
 }
 </script>
+<style>.btn-xs { padding: 0.1rem 0.4rem; font-size: 0.75rem; }</style>
 {% endblock %}

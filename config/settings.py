@@ -79,6 +79,7 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / 'static',
+    BASE_DIR / 'static''dist',
 ]
 
 # 7. Django-Vite 통합 설정 (평면형 변수 구조로 변경)
@@ -89,7 +90,7 @@ DJANGO_VITE_DEV_SERVER_PORT = os.getenv('DJANGO_VITE_DEV_SERVER_PORT', '3000')
 
 # 배포(Production) 시 빌드된 자산의 경로 설정
 DJANGO_VITE_ASSETS_PATH = BASE_DIR / "static" / "dist"
-DJANGO_VITE_MANIFEST_PATH = DJANGO_VITE_ASSETS_PATH / "manifest.json"
+DJANGO_VITE_MANIFEST_PATH = DJANGO_VITE_ASSETS_PATH / ".vite" / "manifest.json"
 
 # 8. 로그인/로그아웃 리다이렉트
 LOGIN_REDIRECT_URL = '/' 

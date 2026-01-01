@@ -1,17 +1,56 @@
-# 환경 설정 파일 (절대 업로드 금지)
+# ------------------------------------------------
+# 1. 환경 설정 및 보안 (절대 업로드 금지)
+# ------------------------------------------------
 .env
-# Python/Django 관련
+.venv
+env/
 venv/
-__pycache__/
-*.pyc
-
-# [중요] DB 접속 정보가 담길 수 있는 설정 파일
-.env
 local_settings.py
 
-# Node.js/Vue 관련
-frontend/node_modules/
-frontend/dist/
+# ------------------------------------------------
+# 2. Python / Django 관련
+# ------------------------------------------------
+# 컴파일된 파일들
+__pycache__/
+*.py[cod]
+*$py.class
 
-# 빌드 결과물
+# 로컬 데이터베이스 (서버 DB와 꼬임 방지)
+db.sqlite3
+db.sqlite3-journal
+
+# 미디어 파일 (사용자가 업로드한 파일은 커밋 제외)
+media/
+
+# 정적 파일 모음 (서버에서 collectstatic으로 생성함)
+staticfiles/
+
+# ------------------------------------------------
+# 3. Frontend (Vue.js / Node.js)
+# ------------------------------------------------
+# 라이브러리 폴더 (용량 주범)
+node_modules/
+frontend/node_modules/
+
+# 빌드 결과물 (Vite 빌드 시 생성되는 파일들)
+dist/
+frontend/dist/
 static/dist/
+
+# npm 로그 파일
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ------------------------------------------------
+# 4. 에디터 및 OS 설정 파일 (팀원간 충돌 방지)
+# ------------------------------------------------
+# VS Code 설정
+.vscode/
+
+# IntelliJ / PyCharm 설정
+.idea/
+
+# Mac / Windows 시스템 파일
+.DS_Store
+Thumbs.db

@@ -1,0 +1,72 @@
+/* frontend/src/components/analysis/pivot-custom.css */
+
+/* 1. 폰트 강제 적용 */
+#custom-pivot-wrapper #wdr-component {
+  font-family: 'Pretendard', 'Malgun Gothic', sans-serif !important;
+  font-size: 13px !important;
+}
+
+/* -----------------------------------------------------------
+   [핵심] 헤더 디자인 (하늘색 배경 + 회색 그라데이션 제거)
+   background-image: none !important; 가 핵심입니다.
+----------------------------------------------------------- */
+#custom-pivot-wrapper #wdr-component .wdr-header,
+#custom-pivot-wrapper #wdr-component .wdr-header-c,
+#custom-pivot-wrapper #wdr-component .wdr-header-r,
+#custom-pivot-wrapper #wdr-component .wdr-hierarchy,
+#custom-pivot-wrapper #wdr-component .wdr-corner {
+  background-image: none !important;      /* 기본 그라데이션 제거 */
+  background-color: #f0f7ff !important;   /* 연한 하늘색 배경 */
+  color: #1c4e80 !important;              /* 진한 남색 텍스트 */
+  font-weight: 700 !important;
+  border-right: 1px solid #dbeafe !important;
+  border-bottom: 1px solid #dbeafe !important;
+}
+
+/* 2. 데이터 셀 (흰색) */
+#custom-pivot-wrapper #wdr-component .wdr-cell {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #333333 !important;
+  border-right: 1px solid #f0f0f0 !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+}
+
+/* 3. 소계 (Total) */
+#custom-pivot-wrapper #wdr-component .wdr-total,
+#custom-pivot-wrapper #wdr-component .wdr-total.wdr-cell {
+  background-image: none !important;
+  background-color: #f8fafc !important; 
+  color: #0f172a !important;
+  font-weight: 800 !important;
+  border-bottom: 2px solid #e2e8f0 !important;
+}
+
+/* 4. 총계 (Grand Total) */
+#custom-pivot-wrapper #wdr-component .wdr-grand-total {
+  background-image: none !important;
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+}
+
+/* 5. 툴바 (흰색 플랫 디자인) */
+#custom-pivot-wrapper #wdr-component .wdr-toolbar {
+  background-image: none !important;
+  background-color: #ffffff !important;
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+/* 6. 선택된 셀 포커스 (진한 파랑) */
+#custom-pivot-wrapper #wdr-component .wdr-cell:focus,
+#custom-pivot-wrapper #wdr-component .wdr-header:focus {
+  outline: 2px solid #3b82f6 !important;
+  z-index: 100 !important;
+}
+
+/* 7. 팝업창 디자인 */
+#wdr-pivot-view .wdr-popup {
+  background-color: #ffffff !important;
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1) !important;
+}

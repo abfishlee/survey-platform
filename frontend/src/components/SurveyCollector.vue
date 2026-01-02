@@ -18,6 +18,30 @@
     </header>
 
     <div class="container py-4" style="max-width: 1000px;">
+      <!-- WARNING 리스트 표시 -->
+      <div v-if="savedWarnings.length > 0" class="alert alert-warning border-warning shadow-sm mb-4">
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i>
+          <h6 class="mb-0 fw-bold">⚠️ 저장된 경고 사항 ({{ savedWarnings.length }}건)</h6>
+        </div>
+        <ul class="list-unstyled mb-0">
+          <li v-for="(warning, idx) in savedWarnings" :key="idx" 
+              class="mb-2 p-2 bg-white rounded border border-warning-subtle cursor-pointer"
+              @click="focusToWarningCell(warning)"
+              style="cursor: pointer; transition: all 0.2s;"
+              @mouseenter="$event.currentTarget.style.backgroundColor = '#fff3cd'"
+              @mouseleave="$event.currentTarget.style.backgroundColor = 'white'">
+            <div class="d-flex align-items-start">
+              <i class="bi bi-arrow-right-circle-fill text-warning me-2 mt-1"></i>
+              <div class="flex-grow-1">
+                <strong class="text-dark">{{ warning.message || `규칙 ${warning.rule_id}` }}</strong>
+                <small class="d-block text-muted mt-1">{{ warning.condition }}</small>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </div>
+
       <ul class="nav nav-pills mb-4 bg-white p-2 rounded shadow-sm" v-if="surveyForms.length > 1">
         <li v-for="(form, fIdx) in surveyForms" :key="form.ver_form_id" class="nav-item">
           <button class="nav-link" :class="{ active: activeFormIdx === fIdx }" @click="activeFormIdx = fIdx">
@@ -57,7 +81,7 @@
                 </div>
               </div>
 
-              <div v-else-if="q.type === 'table' || q.type === 'mapping-table'" class="table-responsive bg-white rounded border p-3">
+              <div v-else-if="q.type === 'table' || q.type === 'mapping-table'" class="table-responsive bg-white rounded border p-3" :data-table-id="q.id">
                 
                 <table v-if="q.type === 'mapping-table'" class="table table-bordered align-middle text-center small mb-0">
                   <tbody>
@@ -94,7 +118,10 @@
                           <td class="bg-light fw-bold text-start ps-3">{{ rowLabel }}</td>
                           <td v-for="sub in (q.subItems || [])" :key="sub.id">
                             <input type="text" class="form-control form-control-sm border-0 text-center" 
-                                   v-model="answers[currentForm.ver_form_id][q.id][rIdx][sub.id]">
+                                   v-model="answers[currentForm.ver_form_id][q.id][rIdx][sub.id]"
+                                   :data-table-id="q.id"
+                                   :data-row-index="rIdx"
+                                   :data-col-id="sub.id">
                           </td>
                         </tr>
                       </template>
@@ -104,7 +131,10 @@
                           <td>{{ rIdx + 1 }}</td>
                           <td v-for="sub in (q.subItems || [])" :key="sub.id">
                             <input type="text" class="form-control form-control-sm border-0 text-center" 
-                                   v-model="row[sub.id]">
+                                   v-model="row[sub.id]"
+                                   :data-table-id="q.id"
+                                   :data-row-index="rIdx"
+                                   :data-col-id="sub.id">
                           </td>
                           <td>
                             <button class="btn btn-sm btn-outline-danger border-0 py-0" @click="removeFlexibleRow(q.id, rIdx)">
@@ -153,7 +183,8 @@ const dataId = ref(null);
 const respondentId = ref('');
 const surveyForms = ref([]);
 const activeFormIdx = ref(0);
-const answers = ref({}); 
+const answers = ref({});
+const savedWarnings = ref([]); 
 
 const currentForm = computed(() => surveyForms.value[activeFormIdx.value]);
 
@@ -169,10 +200,11 @@ const getMappedItemLabel = (q, r, c) => q.cells[`${r}-${c}`].label;
 
 const loadSurveyData = (data) => {
   if (!data) return;
-  const { dataId: id, respondentId: rid, forms } = data;
+  const { dataId: id, respondentId: rid, forms, saved_warnings } = data;
   dataId.value = id;
   respondentId.value = rid;
   surveyForms.value = forms;
+  savedWarnings.value = saved_warnings || [];
 
   forms.forEach(form => {
     if (!answers.value[form.ver_form_id]) answers.value[form.ver_form_id] = {};
@@ -241,21 +273,45 @@ const removeFlexibleRow = (qId, idx) => {
   if (rows.length > 0) rows.splice(idx, 1);
 };
 
-const saveAllData = async () => {
+const saveAllData = async (forceSave = false) => {
   if (props.isPreview) return;
-  if (!confirm("입력한 모든 데이터를 저장하시겠습니까?")) return;
+  if (!forceSave && !confirm("입력한 모든 데이터를 저장하시겠습니까?")) return;
   try {
     const response = await fetch(`/data/${dataId.value}/save-survey/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]')?.value || '' },
-      body: JSON.stringify({ answers: answers.value })
+      body: JSON.stringify({ answers: answers.value, force_save: forceSave })
     });
     const result = await response.json();
     if (response.ok) {
-      alert("성공적으로 저장되었습니다.");
+      // WARNING 상태인 경우 (저장 전 확인)
+      if (result.status === 'warning' && result.warnings && result.warnings.length > 0) {
+        const warningMsg = "⚠️ 경고가 있습니다:\n\n" + result.warnings.join('\n') + "\n\n경고를 무시하고 저장하시겠습니까?";
+        if (confirm(warningMsg)) {
+          // 사용자가 확인하면 force_save=true로 다시 저장 요청
+          saveAllData(true);
+        }
+        return;
+      }
+      
+      // 저장 성공
+      if (result.warnings && result.warnings.length > 0) {
+        alert("⚠️ 경고: " + result.warnings.join('\n') + "\n\n저장되었습니다.");
+      } else {
+        alert("성공적으로 저장되었습니다.");
+      }
       location.reload();
     } else {
-      alert("저장 실패: " + result.message);
+      // 내검 규칙 위반 에러 처리
+      if (result.errors && result.errors.length > 0) {
+        let errorMsg = "❌ 내검 규칙 위반:\n\n" + result.errors.join('\n');
+        if (result.warnings && result.warnings.length > 0) {
+          errorMsg += "\n\n⚠️ 경고:\n" + result.warnings.join('\n');
+        }
+        alert(errorMsg);
+      } else {
+        alert("저장 실패: " + (result.message || '알 수 없는 오류'));
+      }
     }
   } catch (e) {
     alert("서버 통신 중 오류가 발생했습니다.");
@@ -265,6 +321,138 @@ const saveAllData = async () => {
 const closeModal = () => { 
   if (props.isPreview) return; 
   if(confirm("종료하시겠습니까?")) location.reload(); 
+};
+
+// WARNING 셀로 포커스 및 이동
+const focusToWarningCell = (warning) => {
+  const condition = warning.condition || '';
+  
+  // 테이블 셀 참조 패턴: {table_id}[row][col]
+  const tableCellMatch = condition.match(/\{(\w+)\}\[(\d+)\]\[(\w+)\]/);
+  if (!tableCellMatch) {
+    alert('일반 필드 포커스 기능은 아직 구현되지 않았습니다.');
+    return;
+  }
+  
+  const [, tableIdOrOrigin, rowIdx, colId] = tableCellMatch;
+  const rowIndex = parseInt(rowIdx);
+  
+  // 해당 테이블 찾기 (originId 또는 실제 ID로 찾기)
+  let targetForm = null;
+  let targetQuestion = null;
+  
+  for (const form of surveyForms.value) {
+    // originId 또는 실제 ID로 찾기
+    targetQuestion = form.design_data.find(q => 
+      q.id === tableIdOrOrigin || q.originId === tableIdOrOrigin
+    );
+    if (targetQuestion) {
+      targetForm = form;
+      break;
+    }
+  }
+  
+  if (!targetQuestion || targetQuestion.type !== 'table') {
+    alert('해당 테이블을 찾을 수 없습니다.');
+    return;
+  }
+  
+  // 실제 테이블 ID 사용 (originId로 찾았을 경우)
+  const actualTableId = targetQuestion.id;
+  
+  // 해당 조사표로 전환
+  const formIdx = surveyForms.value.findIndex(f => f.ver_form_id === targetForm.ver_form_id);
+  if (formIdx !== -1) {
+    activeFormIdx.value = formIdx;
+  }
+  
+  // DOM 업데이트 대기 후 스크롤 및 포커스
+  setTimeout(() => {
+    // 테이블 컨테이너 찾기 (실제 ID 사용)
+    const tableContainer = document.querySelector(`[data-table-id="${actualTableId}"]`);
+    if (!tableContainer) {
+      alert('테이블을 찾을 수 없습니다.');
+      return;
+    }
+    
+    // 테이블 컨테이너로 스크롤
+    tableContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    setTimeout(() => {
+      const table = tableContainer.querySelector('table');
+      if (!table) {
+        alert('테이블 요소를 찾을 수 없습니다.');
+        return;
+      }
+      
+      const rows = table.querySelectorAll('tbody tr');
+      if (!rows[rowIndex]) {
+        alert(`행 ${rowIndex + 1}을 찾을 수 없습니다.`);
+        return;
+      }
+      
+      // data 속성으로 직접 input 찾기 (실제 테이블 ID 사용)
+      const input = table.querySelector(`input[data-table-id="${actualTableId}"][data-row-index="${rowIndex}"][data-col-id="${colId}"]`);
+      
+      console.log('[셀 포커스 디버깅]', {
+        tableIdOrOrigin,
+        actualTableId,
+        rowIndex,
+        colId,
+        input,
+        allInputs: Array.from(table.querySelectorAll('input')).map(inp => ({
+          tableId: inp.getAttribute('data-table-id'),
+          rowIndex: inp.getAttribute('data-row-index'),
+          colId: inp.getAttribute('data-col-id')
+        }))
+      });
+      
+      if (!input) {
+        console.error('입력 필드를 찾을 수 없음:', {
+          tableIdOrOrigin,
+          actualTableId,
+          rowIndex,
+          colId,
+          searchSelector: `input[data-table-id="${actualTableId}"][data-row-index="${rowIndex}"][data-col-id="${colId}"]`
+        });
+        alert(`해당 셀을 찾을 수 없습니다. (테이블: ${tableIdOrOrigin}, 행: ${rowIndex + 1}, 열: ${colId})`);
+        return;
+      }
+      
+      // input의 부모 셀 찾기
+      const targetCell = input.closest('td');
+      if (!targetCell) {
+        alert('셀 요소를 찾을 수 없습니다.');
+        return;
+      }
+      
+      // 셀로 스크롤
+      targetCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      setTimeout(() => {
+        input.focus();
+        input.select(); // 텍스트 선택
+        // 강조 표시
+        input.style.border = '3px solid #ffc107';
+        input.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
+        input.style.backgroundColor = '#fff3cd';
+        input.style.fontWeight = 'bold';
+        
+        // 셀 배경도 강조
+        targetCell.style.backgroundColor = '#fff3cd';
+        targetCell.style.transition = 'background-color 0.3s';
+        
+        // 2초 후 강조 제거
+        setTimeout(() => {
+          input.style.border = '';
+          input.style.boxShadow = '';
+          input.style.backgroundColor = '';
+          input.style.fontWeight = '';
+          targetCell.style.backgroundColor = '';
+        }, 2000);
+      }, 300);
+    }, 300);
+  }, 100);
 };
 </script>
 

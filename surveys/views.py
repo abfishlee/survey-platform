@@ -635,7 +635,19 @@ def get_survey_data(request, data_id):
     if not survey_forms:
         return JsonResponse({'status': 'error', 'message': '확정된 조사표 버전이 하나도 없습니다.'}, status=404)
 
-    # 6. 모든 기능이 통합된 최종 데이터 반환
+    # 6. 저장된 WARNING 정보 추출 (있는 경우)
+    saved_warnings = []
+    if isinstance(data_record.survey_values, dict) and '_warnings' in data_record.survey_values:
+        saved_warnings = data_record.survey_values.get('_warnings', [])
+        # survey_values에서 _warnings 제거 (실제 답변 데이터만 전달)
+        for form in survey_forms:
+            if form['ver_form_id'] in data_record.survey_values:
+                form_values = data_record.survey_values[form['ver_form_id']]
+                if isinstance(form_values, dict) and '_warnings' in form_values:
+                    # 각 form의 saved_values에서도 _warnings 제거
+                    pass  # 이미 saved_values는 별도로 추출했으므로 문제없음
+
+    # 7. 모든 기능이 통합된 최종 데이터 반환
     return JsonResponse({
         'status': 'success',
         'roster_id': roster.roster_code,      # 명부 코드 (예: N00001)
@@ -643,7 +655,8 @@ def get_survey_data(request, data_id):
         'survey_year': survey_master.survey_year,
         'survey_degree': survey_master.survey_degree,
         'forms': survey_forms,                # 조사표 정보 리스트
-        'edit_rules': edit_rules              # 내검 규칙 리스트
+        'edit_rules': edit_rules,             # 내검 규칙 리스트
+        'saved_warnings': saved_warnings      # 저장된 WARNING 정보
     })
 
     # 3. 조사표별 확정 버전 데이터 구성
@@ -680,12 +693,201 @@ def get_survey_data(request, data_id):
         'forms': survey_forms  # 여러 개의 조사표 데이터가 들어있는 리스트
     })
 
+def evaluate_edit_rule(condition, answers, design_data_map, target_form_id):
+    """
+    내검 규칙 조건식을 평가하는 함수
+    condition: 조건식 문자열 (예: "{q6}[0][q6_1] == '1'") - originId 사용 가능
+    answers: 저장할 답변 데이터 (예: {"S00001-V1": {"q6_1767248816834": [{"q6_1": "2"}]}})
+    design_data_map: {form_id: design_data} 맵핑
+    target_form_id: 대상 조사표 ID
+    """
+    import re
+    
+    # originId -> 실제 ID 매핑 생성
+    origin_id_to_real_id = {}
+    for form_id, design_data in design_data_map.items():
+        for item in design_data:
+            if item.get('originId'):
+                origin_id_to_real_id[item['originId']] = item.get('id')
+    
+    # 테이블 셀 참조 패턴: {table_id}[row][col]
+    table_cell_pattern = r'\{(\w+)\}\[(\d+)\]\[(\w+)\]'
+    
+    # 먼저 테이블 셀 참조를 처리
+    def replace_table_cell(match):
+        table_id_or_origin, row_idx, col_id = match.groups()
+        row_idx = int(row_idx)
+        
+        # originId인 경우 실제 ID로 변환
+        actual_table_id = origin_id_to_real_id.get(table_id_or_origin, table_id_or_origin)
+        
+        # 해당 조사표의 답변 데이터 찾기
+        for ver_form_id, form_data in answers.items():
+            if form_data.get(actual_table_id) is not None and isinstance(form_data[actual_table_id], list):
+                table_data = form_data[actual_table_id]
+                if row_idx < len(table_data) and isinstance(table_data[row_idx], dict):
+                    cell_value = table_data[row_idx].get(col_id, '')
+                    # 문자열로 변환 (비교를 위해)
+                    return f"'{str(cell_value)}'" if cell_value != '' else "''"
+        return "''"
+    
+    # 테이블 셀 참조 치환
+    condition = re.sub(table_cell_pattern, replace_table_cell, condition)
+    
+    # 일반 필드 참조 패턴: {field_id} - originId 사용 가능
+    def replace_field_ref(match):
+        field_id_or_origin = match.group(1)
+        # originId인 경우 실제 ID로 변환
+        actual_field_id = origin_id_to_real_id.get(field_id_or_origin, field_id_or_origin)
+        
+        # 해당 조사표의 답변 데이터 찾기
+        for ver_form_id, form_data in answers.items():
+            if actual_field_id in form_data:
+                value = form_data[actual_field_id]
+                # 리스트나 딕셔너리는 문자열로 변환하지 않음 (테이블은 이미 처리됨)
+                if isinstance(value, (list, dict)):
+                    return "''"
+                return f"'{str(value)}'" if value != '' else "''"
+        return "''"
+    
+    # 일반 필드 참조 치환
+    pattern = r'\{(\w+)\}'
+    try:
+        evaluated_condition = re.sub(pattern, replace_field_ref, condition)
+        # 안전한 평가를 위해 제한된 환경에서만 실행
+        # 주의: eval 사용은 보안상 위험할 수 있으나, 내부 시스템이므로 허용
+        result = eval(evaluated_condition, {"__builtins__": {}}, {})
+        return bool(result)
+    except Exception as e:
+        # 조건식 평가 실패 시 False 반환 (검증 실패로 처리)
+        print(f"내검 규칙 평가 오류: {str(e)}")
+        print(f"조건식: {condition}")
+        return False
+
 @login_required
 def save_survey_response(request, data_id):
-    """조사 답변 저장 API"""
+    """조사 답변 저장 API (내검 규칙 검증 포함)"""
     if request.method == 'POST':
         data_record = get_object_or_404(SurveyData, pk=data_id)
-        data_record.survey_values = json.loads(request.body).get('answers', {})
+        roster = data_record.roster
+        survey_master = roster.survey
+        design = getattr(survey_master, 'design', None)
+        edit_rules = design.edit_rules if design else []
+        
+        # 저장할 답변 데이터
+        answers = json.loads(request.body).get('answers', {})
+        
+        # 조사표별 설계 데이터 맵핑 생성 (테이블 구조 확인용)
+        questionnaires = roster.questionnaires.all()
+        design_data_map = {}
+        for q in questionnaires:
+            v = q.versions.filter(is_confirmed=True).order_by('-version_number').first()
+            if v:
+                design_data_map[q.form_id] = v.design_data
+        
+        # 내검 규칙 검증
+        errors = []
+        warnings = []
+        
+        for rule in edit_rules:
+            # 대상 조사표 필터링
+            target_form_id = rule.get('target_form_id', '')
+            
+            # 해당 조사표의 답변 데이터만 확인
+            form_answers = {}
+            if target_form_id:
+                # 특정 조사표에만 적용
+                for ver_form_id, form_data in answers.items():
+                    # ver_form_id에서 form_id 추출 (예: "S00001-V1" -> "S00001")
+                    form_id = ver_form_id.split('-')[0] if '-' in ver_form_id else ver_form_id
+                    if form_id == target_form_id or target_form_id in ver_form_id:
+                        form_answers[ver_form_id] = form_data
+            else:
+                # target_form_id가 비어있으면 모든 조사표에 적용
+                form_answers = answers
+            
+            if not form_answers:
+                continue
+            
+            condition = rule.get('condition', '')
+            if not condition:
+                continue
+            
+            # 조건식 평가 (조건식이 True면 위반으로 처리)
+            condition_result = evaluate_edit_rule(condition, form_answers, design_data_map, target_form_id)
+            
+            # 디버깅 로그
+            print(f"[내검 규칙 검증] 규칙ID: {rule.get('rule_id')}, 조건식: {condition}, 결과: {condition_result}")
+            print(f"[내검 규칙 검증] form_answers: {form_answers}")
+            
+            # 조건식이 True면 위반 (내검 규칙은 조건식이 만족되면 위반)
+            if condition_result:
+                message = rule.get('message', f"규칙 {rule.get('rule_id', '')} 위반")
+                severity = rule.get('severity', 'ERROR')
+                
+                if severity == 'ERROR':
+                    errors.append(message)
+                else:
+                    warnings.append(message)
+        
+        # ERROR가 있으면 저장 거부
+        if errors:
+            return JsonResponse({
+                'status': 'error',
+                'message': '내검 규칙 위반으로 저장할 수 없습니다.',
+                'errors': errors,
+                'warnings': warnings
+            }, status=400)
+        
+        # WARNING만 있으면 사용자 확인 후 저장
+        if warnings:
+            # force_save 파라미터가 있으면 확인 후 저장
+            request_data = json.loads(request.body)
+            force_save = request_data.get('force_save', False)
+            
+            if force_save:
+                # 사용자 확인 후 저장
+                # WARNING 정보를 메타데이터로 저장 (조건식과 대상 필드 정보 포함)
+                warning_metadata = []
+                for rule in edit_rules:
+                    if rule.get('severity') == 'WARNING':
+                        condition_result = evaluate_edit_rule(
+                            rule.get('condition', ''), 
+                            {k: v for k, v in answers.items() if k != '_warnings'}, 
+                            design_data_map, 
+                            rule.get('target_form_id', '')
+                        )
+                        if condition_result:
+                            warning_metadata.append({
+                                'rule_id': rule.get('rule_id'),
+                                'message': rule.get('message'),
+                                'condition': rule.get('condition'),
+                                'target_field': rule.get('target_field'),
+                                'target_form_id': rule.get('target_form_id')
+                            })
+                
+                # WARNING 메타데이터를 survey_values에 저장 (최상위 레벨)
+                answers_with_warnings = dict(answers)
+                answers_with_warnings['_warnings'] = warning_metadata
+                
+                data_record.survey_values = answers_with_warnings
+                data_record.status = 'ING'
+                data_record.save()
+                return JsonResponse({
+                    'status': 'success',
+                    'warnings': warnings,
+                    'message': '경고가 있지만 저장되었습니다.'
+                })
+            else:
+                # WARNING만 있을 때는 저장하지 않고 확인 요청
+                return JsonResponse({
+                    'status': 'warning',
+                    'warnings': warnings,
+                    'message': '경고가 있습니다. 저장하시겠습니까?'
+                }, status=200)
+        
+        # 검증 통과 시 저장
+        data_record.survey_values = answers
         data_record.status = 'ING'
         data_record.save()
         return JsonResponse({'status': 'success'})

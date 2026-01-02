@@ -195,7 +195,8 @@ async function openSurveyCollector(dataId, respondentId) {
                 dataId: dataId,
                 respondentId: respondentId,
                 forms: data.forms,
-                editRules: data.edit_rules || []
+                editRules: data.edit_rules || [],
+                saved_warnings: data.saved_warnings || []
             }
         }));
 

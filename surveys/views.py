@@ -710,7 +710,38 @@ def evaluate_edit_rule(condition, answers, design_data_map, target_form_id):
             if item.get('originId'):
                 origin_id_to_real_id[item['originId']] = item.get('id')
     
-    # 테이블 셀 참조 패턴: {table_id}[row][col]
+    # 테이블 열 전체 참조 패턴: {table_id}[*][col] - 모든 행에 대한 검증
+    table_column_all_pattern = r'\{(\w+)\}\[\*\]\[(\w+)\]'
+    
+    def replace_table_column_all(match):
+        """열 전체 검증: 모든 행의 해당 열 값들을 리스트로 반환"""
+        table_id_or_origin, col_id = match.groups()
+        
+        
+        # originId인 경우 실제 ID로 변환
+        actual_table_id = origin_id_to_real_id.get(table_id_or_origin, table_id_or_origin)
+        
+        # 해당 조사표의 답변 데이터 찾기
+        for ver_form_id, form_data in answers.items():
+            if form_data.get(actual_table_id) is not None and isinstance(form_data[actual_table_id], list):
+                table_data = form_data[actual_table_id]
+                # 모든 행의 해당 열 값 추출
+                column_values = []
+                for row_idx, row in enumerate(table_data):
+                    if isinstance(row, dict):
+                        val = row.get(col_id, '')
+                        column_values.append(f"'{str(val)}'" if val != '' else "''")
+                
+                if column_values:
+                    # 리스트 형태로 반환 (함수에서 사용)
+                    result = f"[{', '.join(column_values)}]"
+                    return result
+        return "[]"
+    
+    # 테이블 열 전체 참조 치환 (먼저 처리)
+    condition = re.sub(table_column_all_pattern, replace_table_column_all, condition)
+    
+    # 테이블 셀 참조 패턴: {table_id}[row][col] - 특정 셀 검증
     table_cell_pattern = r'\{(\w+)\}\[(\d+)\]\[(\w+)\]'
     
     # 먼저 테이블 셀 참조를 처리
@@ -754,14 +785,157 @@ def evaluate_edit_rule(condition, answers, design_data_map, target_form_id):
     pattern = r'\{(\w+)\}'
     try:
         evaluated_condition = re.sub(pattern, replace_field_ref, condition)
+        
+        # 열 전체 검증을 위한 헬퍼 함수 추가
+        def all_equal(values, target_value):
+            """리스트의 모든 값이 target_value와 같은지 확인"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            target_str = str(target_value).strip("'\"")
+            return all(str(v).strip("'\"") if v != "''" else '' == target_str for v in values)
+        
+        def all_not_empty(values):
+            """리스트의 모든 값이 비어있지 않은지 확인"""
+            # 디버깅: 값 타입 확인
+            
+            # 리스트가 아니면 False
+            if not isinstance(values, list):
+                return False
+            
+            # 빈 리스트면 False
+            if len(values) == 0:
+                return False
+            
+            # 각 값 확인
+            for v in values:
+                # v는 eval 후 실제 값 (문자열 '' 또는 다른 값)
+                # 빈 문자열이거나 None이면 비어있음
+                is_empty = (v == '' or v is None or str(v).strip() == '' or v == "''")
+                if is_empty:
+                    return False
+            
+            return True
+        
+        def has_empty(values):
+            """리스트에 빈 값이 하나라도 있는지 확인 (all_not_empty의 반대)"""
+            
+            # 리스트가 아니면 True (비어있다고 간주)
+            if not isinstance(values, list):
+                return True
+            
+            # 빈 리스트면 True (비어있다고 간주)
+            if len(values) == 0:
+                return True
+            
+            # 각 값 확인 - 하나라도 비어있으면 True
+            for v in values:
+                is_empty = (v == '' or v is None or str(v).strip() == '' or v == "''")
+                if is_empty:
+                    return True
+            
+            return False
+        
+        def any_equal(values, target_value):
+            """리스트의 값 중 하나라도 target_value와 같은지 확인"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            target_str = str(target_value).strip("'\"")
+            return any(str(v).strip("'\"") if v != "''" else '' == target_str for v in values)
+        
+        def _to_number(value):
+            """문자열을 숫자로 변환 (실패 시 None)"""
+            try:
+                val_str = str(value).strip("'\"")
+                if val_str == '' or val_str == "''":
+                    return None
+                # 정수 또는 실수로 변환 시도
+                if '.' in val_str:
+                    return float(val_str)
+                return int(val_str)
+            except:
+                return None
+        
+        def all_greater(values, target_value):
+            """리스트의 모든 값이 target_value보다 커야 함 (숫자 비교)"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            
+            # 빈 값이 하나라도 있으면 False (숫자 비교 불가)
+            for idx, v in enumerate(values):
+                if v == '' or v is None or str(v).strip() == '' or v == "''":
+                    return False
+            
+            target_num = _to_number(target_value)
+            if target_num is None:
+                return False
+            for idx, v in enumerate(values):
+                val_num = _to_number(v)
+                if val_num is None or val_num <= target_num:
+                    return False
+            return True
+        
+        def all_greater_equal(values, target_value):
+            """리스트의 모든 값이 target_value보다 크거나 같아야 함 (숫자 비교)"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            target_num = _to_number(target_value)
+            if target_num is None:
+                return False
+            for v in values:
+                val_num = _to_number(v)
+                if val_num is None or val_num < target_num:
+                    return False
+            return True
+        
+        def all_less(values, target_value):
+            """리스트의 모든 값이 target_value보다 작아야 함 (숫자 비교)"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            target_num = _to_number(target_value)
+            if target_num is None:
+                return False
+            for v in values:
+                val_num = _to_number(v)
+                if val_num is None or val_num >= target_num:
+                    return False
+            return True
+        
+        def all_less_equal(values, target_value):
+            """리스트의 모든 값이 target_value보다 작거나 같아야 함 (숫자 비교)"""
+            if not isinstance(values, list) or len(values) == 0:
+                return False
+            target_num = _to_number(target_value)
+            if target_num is None:
+                return False
+            for v in values:
+                val_num = _to_number(v)
+                if val_num is None or val_num > target_num:
+                    return False
+            return True
+        
+        
         # 안전한 평가를 위해 제한된 환경에서만 실행
         # 주의: eval 사용은 보안상 위험할 수 있으나, 내부 시스템이므로 허용
-        result = eval(evaluated_condition, {"__builtins__": {}}, {})
-        return bool(result)
+        try:
+            result = eval(evaluated_condition, {
+                "__builtins__": {},
+                "all_equal": all_equal,
+                "all_not_empty": all_not_empty,
+                "has_empty": has_empty,
+                "any_equal": any_equal,
+                "all_greater": all_greater,
+                "all_greater_equal": all_greater_equal,
+                "all_less": all_less,
+                "all_less_equal": all_less_equal
+            }, {})
+            
+            return bool(result)
+        except Exception as eval_error:
+            import traceback
+            traceback.print_exc()
+            return False
     except Exception as e:
         # 조건식 평가 실패 시 False 반환 (검증 실패로 처리)
-        print(f"내검 규칙 평가 오류: {str(e)}")
-        print(f"조건식: {condition}")
         return False
 
 @login_required
@@ -815,10 +989,6 @@ def save_survey_response(request, data_id):
             
             # 조건식 평가 (조건식이 True면 위반으로 처리)
             condition_result = evaluate_edit_rule(condition, form_answers, design_data_map, target_form_id)
-            
-            # 디버깅 로그
-            print(f"[내검 규칙 검증] 규칙ID: {rule.get('rule_id')}, 조건식: {condition}, 결과: {condition_result}")
-            print(f"[내검 규칙 검증] form_answers: {form_answers}")
             
             # 조건식이 True면 위반 (내검 규칙은 조건식이 만족되면 위반)
             if condition_result:

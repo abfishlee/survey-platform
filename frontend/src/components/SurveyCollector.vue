@@ -327,6 +327,121 @@ const closeModal = () => {
 const focusToWarningCell = (warning) => {
   const condition = warning.condition || '';
   
+  // 열 전체 참조 패턴: {table_id}[*][col] (has_empty, all_not_empty 등)
+  const columnAllMatch = condition.match(/\{(\w+)\}\[\*\]\[(\w+)\]/);
+  if (columnAllMatch) {
+    const [, tableIdOrOrigin, colId] = columnAllMatch;
+    
+    // 해당 테이블 찾기 (originId 또는 실제 ID로 찾기)
+    let targetForm = null;
+    let targetQuestion = null;
+    
+    for (const form of surveyForms.value) {
+      targetQuestion = form.design_data.find(q => 
+        q.id === tableIdOrOrigin || q.originId === tableIdOrOrigin
+      );
+      if (targetQuestion) {
+        targetForm = form;
+        break;
+      }
+    }
+    
+    if (!targetQuestion || targetQuestion.type !== 'table') {
+      alert('해당 테이블을 찾을 수 없습니다.');
+      return;
+    }
+    
+    const actualTableId = targetQuestion.id;
+    
+    // 해당 조사표로 전환
+    const formIdx = surveyForms.value.findIndex(f => f.ver_form_id === targetForm.ver_form_id);
+    if (formIdx !== -1) {
+      activeFormIdx.value = formIdx;
+    }
+    
+    // DOM 업데이트 대기 후 스크롤 및 포커스
+    setTimeout(() => {
+      const tableContainer = document.querySelector(`[data-table-id="${actualTableId}"]`);
+      if (!tableContainer) {
+        alert('테이블을 찾을 수 없습니다.');
+        return;
+      }
+      
+      tableContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      setTimeout(() => {
+        const table = tableContainer.querySelector('table');
+        if (!table) {
+          alert('테이블 요소를 찾을 수 없습니다.');
+          return;
+        }
+        
+        // 해당 열의 모든 input 찾기
+        const allInputs = Array.from(table.querySelectorAll(`input[data-table-id="${actualTableId}"][data-col-id="${colId}"]`));
+        
+        // 첫 번째 빈 셀 찾기 (값이 비어있거나 공백인 경우)
+        let targetInput = null;
+        let targetRowIndex = -1;
+        
+        for (const input of allInputs) {
+          const rowIdx = parseInt(input.getAttribute('data-row-index'));
+          const value = answers.value[targetForm.ver_form_id][actualTableId]?.[rowIdx]?.[colId] || '';
+          
+          // 빈 값 체크
+          if (!value || value.toString().trim() === '') {
+            targetInput = input;
+            targetRowIndex = rowIdx;
+            break;
+          }
+        }
+        
+        // 빈 셀이 없으면 첫 번째 셀에 포커스
+        if (!targetInput && allInputs.length > 0) {
+          targetInput = allInputs[0];
+          targetRowIndex = parseInt(targetInput.getAttribute('data-row-index'));
+        }
+        
+        if (!targetInput) {
+          alert(`해당 열의 셀을 찾을 수 없습니다. (테이블: ${tableIdOrOrigin}, 열: ${colId})`);
+          return;
+        }
+        
+        const targetCell = targetInput.closest('td');
+        if (!targetCell) {
+          alert('셀 요소를 찾을 수 없습니다.');
+          return;
+        }
+        
+        // 셀로 스크롤
+        targetCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        setTimeout(() => {
+          targetInput.focus();
+          targetInput.select();
+          // 강조 표시
+          targetInput.style.border = '3px solid #ffc107';
+          targetInput.style.boxShadow = '0 0 15px rgba(255, 193, 7, 0.8)';
+          targetInput.style.backgroundColor = '#fff3cd';
+          targetInput.style.fontWeight = 'bold';
+          
+          targetCell.style.backgroundColor = '#fff3cd';
+          targetCell.style.transition = 'background-color 0.3s';
+          
+          // 2초 후 강조 제거
+          setTimeout(() => {
+            targetInput.style.border = '';
+            targetInput.style.boxShadow = '';
+            targetInput.style.backgroundColor = '';
+            targetInput.style.fontWeight = '';
+            targetCell.style.backgroundColor = '';
+          }, 2000);
+        }, 300);
+      }, 300);
+    }, 100);
+    
+    return;
+  }
+  
   // 테이블 셀 참조 패턴: {table_id}[row][col]
   const tableCellMatch = condition.match(/\{(\w+)\}\[(\d+)\]\[(\w+)\]/);
   if (!tableCellMatch) {

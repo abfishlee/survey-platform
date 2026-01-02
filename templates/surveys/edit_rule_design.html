@@ -52,11 +52,14 @@
             <div class="col-md-6">
                 <li>일반 문항 참조: <strong>{q1}</strong> (항목 ID를 중괄호로 감싸서 입력)</li>
                 <li><strong class="text-primary">테이블 셀 참조:</strong> <code>{table_id}[행인덱스][열ID]</code></li>
-                <li>연산자: <code>and, or, not, ==, !=, >, <</code> (파이썬 문법 사용)</li>
+                <li><strong class="text-success">열 전체 참조:</strong> <code>{table_id}[*][열ID]</code> (모든 행)</li>
+                <li>연산자: <code>and, or, not, ==, !=, >, <, >=, <=</code> (파이썬 문법 사용)</li>
+                <li><strong>복합 조건:</strong> <code>all_greater({q7}[*][q7_2],2) and has_empty({q7}[*][q7_2])</code></li>
             </div>
             <div class="col-md-6">
                 <li>일반 예시: <code>{age} < 15 and {marriage} == '1'</code></li>
-                <li><strong class="text-primary">테이블 예시:</strong> <code>{q6}[0][q6_1] == '1'</code> (originId 사용, 1행, q6_1열이 1이어야 함)</li>
+                <li><strong class="text-primary">셀 예시:</strong> <code>{q6}[0][q6_1] > '5'</code> (1행, q6_1열이 5보다 커야 함)</li>
+                <li><strong class="text-success">열 전체 예시:</strong> <code>all_greater({q6}[*][q6_1], '5')</code> (모든 행의 q6_1열이 5보다 커야 함)</li>
                 <li><strong>Error</strong>: 저장 불가 / <strong>Warning</strong>: 확인 후 저장 가능</li>
             </div>
         </div>
@@ -66,7 +69,31 @@
                 <li>행 인덱스는 <strong>0부터 시작</strong>합니다 (1행 = 0, 2행 = 1, ...)</li>
                 <li>열ID는 테이블 설계 시 정의한 <strong>서브항목(subItems)의 ID</strong>를 사용합니다</li>
                 <li>테이블 ID는 <strong>originId</strong>를 사용할 수 있습니다 (예: <code>q6</code>)</li>
-                <li>실제 예시: <code>{q6}[0][q6_1] == '1'</code> (originId가 <code>q6</code>인 테이블의 1행 1열이 1이어야 함)</li>
+                <li><strong>셀 예시:</strong> <code>{q6}[0][q6_1] == '1'</code> (1행 1열이 1이어야 함)</li>
+                <li><strong>비교 연산자:</strong> <code>{q6}[0][q6_1] > '5'</code> (1행 1열이 5보다 커야 함)</li>
+            </ul>
+        </div>
+        <div class="mt-2 p-2 bg-success-subtle rounded border border-success">
+            <small class="text-dark fw-bold"><i class="bi bi-info-circle-fill text-success me-1"></i>열 전체 검증:</small>
+            <ul class="mb-0 small text-dark">
+                <li><code>{q6}[*][q6_1]</code>는 <strong>모든 행의 q6_1 열</strong>을 의미합니다</li>
+                <li><strong>같음/비어있음:</strong> <code>all_equal({q6}[*][q6_1], '1')</code>, <code>all_not_empty({q6}[*][q6_2])</code> (모두 비어있지 않아야 함)</li>
+                <li><strong>빈 값 체크:</strong> <code>has_empty({q6}[*][q6_2])</code> (하나라도 비어있으면 True, 위반)</li>
+                <li><strong>크기 비교:</strong> <code>all_greater({q6}[*][q6_1], '5')</code> (모든 행의 q6_1이 5보다 커야 함)</li>
+                <li><strong>크기 비교:</strong> <code>all_less({q6}[*][q6_1], '10')</code> (모든 행의 q6_1이 10보다 작아야 함)</li>
+                <li><strong>크거나 같음/작거나 같음:</strong> <code>all_greater_equal()</code>, <code>all_less_equal()</code></li>
+            </ul>
+        </div>
+        <div class="mt-2 p-2 bg-info-subtle rounded border border-info">
+            <small class="text-dark fw-bold"><i class="bi bi-lightbulb-fill text-info me-1"></i>복합 조건식 작성 가이드:</small>
+            <ul class="mb-0 small text-dark">
+                <li class="text-danger fw-bold mb-2">⚠️ 중요: 조건식이 True일 때 위반으로 처리됩니다!</li>
+                <li><strong>올바른 예시:</strong> <code>not (all_greater({q7}[*][q7_2],2) and all_not_empty({q7}[*][q7_2]))</code></li>
+                <li class="ms-3 text-muted">→ "모든 값이 2보다 크고, 모두 비어있지 않아야 함"을 만족하지 않으면 위반</li>
+                <li><strong>또는:</strong> <code>has_empty({q7}[*][q7_2]) or not all_greater({q7}[*][q7_2],2)</code></li>
+                <li class="ms-3 text-muted">→ 빈 값이 있거나, 모든 값이 2보다 크지 않으면 위반</li>
+                <li class="text-warning mt-2"><strong>잘못된 예시:</strong> <code>all_greater({q7}[*][q7_2],2) and all_not_empty({q7}[*][q7_2])</code></li>
+                <li class="ms-3 text-muted">→ 이렇게 작성하면 조건을 만족할 때 위반이 됩니다 (반대 의미)</li>
             </ul>
         </div>
     </div>

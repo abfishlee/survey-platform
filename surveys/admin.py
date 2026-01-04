@@ -65,7 +65,7 @@ class SqlLabManagerAdmin(admin.ModelAdmin):
             'title': 'SQL 통합 관리 (Superset)',
             # login_url: 자동 로그인을 처리할 주소 (아래에서 설명)
             'superset_login_url': "http://119.223.104.14:8088/login/",
-            'next_url': "/sqllab/",  # 로그인 성공 후 이동할 곳
+            'next_url': "http://119.223.104.14:8088/sqllab/",  # 로그인 성공 후 이동할 곳
             **(extra_context or {}),
         }
         return render(request, 'admin/sql_lab_embed.html', context)

@@ -28,12 +28,22 @@
     }
 </style>
 
-<div class="superset-wrapper">
-    <div id="loading-mask">
-        <p>🔄 Superset 보안 연결 및 자동 로그인 중...</p>
-    </div>
-
-    <iframe name="superset_frame" src="about:blank"></iframe>
+<div class="superset-wrapper" style="text-align: center; padding: 50px;">
+    <h3>🔒 보안 정책으로 인해 새 창에서 열어야 합니다.</h3>
+    <p>아래 버튼을 누르면 Superset으로 자동 로그인하여 이동합니다.</p>
+    
+    <form id="auto-login-form" 
+          action="{{ superset_login_url }}?next={{ next_url }}" 
+          method="POST" 
+          target="_blank"> <input type="hidden" name="username" value="admin">
+        <input type="hidden" name="password" value="admin">
+        
+        <input type="hidden" name="csrf_token" value="">
+        
+        <button type="submit" class="button" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px;">
+            🚀 Superset SQL Lab 열기
+        </button>
+    </form>
 </div>
 
 <form id="auto_login_form" 

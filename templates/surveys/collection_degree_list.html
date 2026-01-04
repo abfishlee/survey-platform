@@ -40,6 +40,35 @@
                             <a href="{% url 'roster_data_view' rosters.first.id degree.id %}" class="btn btn-primary">
                                 <i class="bi bi-pencil-square me-1"></i> 조사 시작
                             </a>
+                            <form id="superset-popup-form" action="http://119.223.104.14:8088/login/" method="POST" style="display: none;">
+                                <input type="hidden" name="username" value="admin">
+                                <input type="hidden" name="password" value="admin">
+                                <input type="hidden" name="csrf_token" value="">
+                                
+                                <input type="hidden" name="next" value="/superset/dashboard/16/?standalone=2">
+                            </form>
+                            <script>
+                                function openReportPopup() {
+                                    var windowName = 'SupersetReportWindow';
+                                    var w = 1200;
+                                    var h = 900;
+                                    var left = (screen.width / 2) - (w / 2);
+                                    var top = (screen.height / 2) - (h / 2);
+                                    
+                                    // 팝업창 옵션 (주소창, 메뉴바 제거)
+                                    var specs = 'toolbar=no, location=no, directories=no, status=no, menubar=no, scrollbars=yes, resizable=yes, copyhistory=no, width=' + w + ', height=' + h + ', top=' + top + ', left=' + left;
+                                    
+                                    window.open('', windowName, specs);
+                                    
+                                    var form = document.getElementById('superset-popup-form');
+                                    form.target = windowName;
+                                    form.submit();
+                                }
+                                </script>
+
+                                <button type="button" onclick="openReportPopup()" class="btn btn-info" style="color: white; font-weight: bold; margin-left: 10px;">
+                                    📊 리포트 보기
+                                </button>
                             {% else %}
                             <button class="btn btn-secondary" disabled>명부 없음</button>
                             {% endif %}

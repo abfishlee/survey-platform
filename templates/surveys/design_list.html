@@ -5,31 +5,64 @@
     .step-container { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
     .btn-step { font-size: 0.85rem; padding: 10px 5px; font-weight: 600; }
     .btn-disabled { opacity: 0.5; cursor: not-allowed; }
+    
+    /* 검색창 스타일 추가 */
+    .search-box {
+        max-width: 400px;
+        position: relative;
+    }
+    .search-icon {
+        position: absolute;
+        left: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #6c757d;
+        pointer-events: none;
+    }
+    .form-control-search {
+        padding-left: 40px;
+        border-radius: 20px;
+        border: 1px solid #ced4da;
+    }
+    .form-control-search:focus {
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+        border-color: #86b7fe;
+    }
 </style>
 
 <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
+    <div class="row align-items-center mb-4">
+        <div class="col-md-6">
             <a href="{% url 'dashboard' %}" class="btn btn-outline-dark btn-sm me-2">
                 🏠 홈
             </a>
             <h3 class="d-inline-block align-middle mb-0 fw-bold">통계 조사 통합 설계 센터</h3>
         </div>
+        
+        <div class="col-md-6 d-flex justify-content-md-end mt-3 mt-md-0">
+            <div class="search-box w-100">
+                <i class="bi bi-search search-icon"></i>
+                <input type="text" id="surveySearchInput" class="form-control form-control-search" 
+                       placeholder="조사 ID 또는 조사명을 검색하세요... (예: S0001)">
+            </div>
+        </div>
     </div>
 
-    <div class="row">
+    <div class="row" id="surveyListContainer">
         {% for survey in surveys %}
-        <div class="col-12 mb-4">
+        <div class="col-12 mb-4 survey-card-item" 
+             data-code="{{ survey.survey_code|default:'' }}" 
+             data-name="{{ survey.survey_name|default:'' }}">
+             
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white py-3 border-bottom-0">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <span class="badge bg-primary mb-2">Survey ID: {{ survey.survey_code }}</span>
-                            <h4 class="card-title fw-bold text-dark mb-0">{{ survey.survey_name }}</h4>
+                            <h4 class="card-title fw-bold text-dark mb-0 survey-name-text">{{ survey.survey_name }}</h4>
                         </div>
                         <div class="text-end">
                             <small class="text-muted d-block">조사연도: {{ survey.survey_year }}</small>
-                            <small class="text-muted d-block">진행차수: {{ survey.survey_degree }}차</small>
                         </div>
                     </div>
                 </div>
@@ -69,11 +102,84 @@
             </div>
         </div>
         {% empty %}
-        <div class="col-12 text-center py-5 border rounded bg-white">
+        <div class="col-12 text-center py-5 border rounded bg-white" id="noDataMessage">
             <i class="bi bi-clipboard-x display-1 text-muted mb-3"></i>
             <p class="text-muted fs-5">등록된 통계 조사 프로젝트가 없습니다.</p>
         </div>
         {% endfor %}
+        
+        <div class="col-12 text-center py-5 border rounded bg-white d-none" id="noSearchResult">
+            <i class="bi bi-search display-1 text-muted mb-3"></i>
+            <p class="text-muted fs-5">검색 결과가 없습니다.</p>
+        </div>
     </div>
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. 초기 로딩 시 ID 기준 자동 정렬 (views.py 수정 없이도 작동)
+    sortSurveysById();
+
+    // 2. 검색 기능 초기화
+    const searchInput = document.getElementById('surveySearchInput');
+    searchInput.addEventListener('keyup', filterSurveys);
+});
+
+// 조사 ID(S0001, S0002...) 기준으로 카드 정렬 함수
+function sortSurveysById() {
+    const container = document.getElementById('surveyListContainer');
+    const cards = Array.from(container.getElementsByClassName('survey-card-item'));
+
+    // 카드가 없으면 종료
+    if(cards.length === 0) return;
+
+    // ID 기준 오름차순 정렬
+    cards.sort(function(a, b) {
+        const codeA = a.getAttribute('data-code').toUpperCase();
+        const codeB = b.getAttribute('data-code').toUpperCase();
+        return codeA.localeCompare(codeB);
+    });
+
+    // 정렬된 순서대로 다시 DOM에 추가 (이동)
+    cards.forEach(function(card) {
+        container.appendChild(card); // 기존 요소 이동됨
+    });
+    
+    // noSearchResult 메시지나 empty 메시지는 맨 아래로 보냄
+    const noResult = document.getElementById('noSearchResult');
+    const noData = document.getElementById('noDataMessage');
+    if(noResult) container.appendChild(noResult);
+    if(noData) container.appendChild(noData);
+}
+
+// 실시간 검색 필터 함수
+function filterSurveys() {
+    const input = document.getElementById('surveySearchInput');
+    const filter = input.value.toUpperCase();
+    const cards = document.getElementsByClassName('survey-card-item');
+    const noSearchResult = document.getElementById('noSearchResult');
+    let visibleCount = 0;
+
+    for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const code = card.getAttribute('data-code').toUpperCase();
+        const name = card.getAttribute('data-name').toUpperCase();
+
+        // 검색어가 코드나 이름에 포함되어 있는지 확인
+        if (code.indexOf(filter) > -1 || name.indexOf(filter) > -1) {
+            card.classList.remove('d-none');
+            visibleCount++;
+        } else {
+            card.classList.add('d-none');
+        }
+    }
+
+    // 검색 결과가 하나도 없을 때 메시지 표시
+    if (visibleCount === 0 && cards.length > 0) {
+        noSearchResult.classList.remove('d-none');
+    } else {
+        noSearchResult.classList.add('d-none');
+    }
+}
+</script>
 {% endblock %}

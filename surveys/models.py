@@ -6,7 +6,17 @@ class SurveyMaster(models.Model):
     survey_code = models.CharField(max_length=20, unique=True, verbose_name="조사코드")
     survey_name = models.CharField(max_length=200, verbose_name="조사명")
     survey_year = models.CharField(max_length=4, verbose_name="조사연도")
-    survey_degree = models.IntegerField(default=1, verbose_name="조사차수")
+    # [수정] 차수 제거, 설명 추가
+    description = models.TextField(blank=True, null=True, verbose_name="조사설명") 
+
+    # [추가됨] 이 조사를 관리할 수 있는 매니저들 (다대다 관계)
+    managers = models.ManyToManyField(
+        User, 
+        related_name='managed_surveys', 
+        blank=True, 
+        verbose_name="담당 관리자"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -15,6 +25,24 @@ class SurveyMaster(models.Model):
 
     def __str__(self):
         return f"[{self.survey_code}] {self.survey_name}"
+    
+# [신규 추가] 조사 차수 관리 (1:N)
+class SurveyDegree(models.Model):
+    survey = models.ForeignKey(SurveyMaster, on_delete=models.CASCADE, related_name='degrees', verbose_name="조사마스터")
+    degree_number = models.IntegerField(verbose_name="조사차수") # 예: 1, 2, 3...
+    degree_title = models.CharField(max_length=200, verbose_name="차수명", help_text="예: 2024년 상반기 정기조사")
+    start_date = models.DateField(verbose_name="조사시작일")
+    end_date = models.DateField(verbose_name="조사종료일")
+    is_active = models.BooleanField(default=True, verbose_name="활성여부")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "조사 차수"
+        verbose_name_plural = "조사 차수 목록"
+        unique_together = ('survey', 'degree_number') # 동일 조사 내 중복 차수 방지
+
+    def __str__(self):
+        return f"{self.survey.survey_name} - {self.degree_number}차 ({self.degree_title})"    
 
 # 2. 통계 설계
 class SurveyDesign(models.Model):
@@ -94,6 +122,8 @@ class QuestionnaireVersion(models.Model):
 class SurveyData(models.Model):
     roster = models.ForeignKey(SurveyRoster, on_delete=models.CASCADE, related_name='data_records', null=True, blank=True)
     
+    degree = models.ForeignKey('SurveyDegree', on_delete=models.CASCADE, null=True, blank=True, verbose_name="조사차수")
+
     # [수정] SurveyArea 대신 'SurveyArea' 문자열로 참조하여 NameError 방지
     area = models.ForeignKey('SurveyArea', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="소속권역")
     
@@ -119,3 +149,14 @@ class SurveyAnalysis(models.Model):
 
     def __str__(self):
         return f"[{self.survey.survey_name}] {self.title}"
+
+# 8. superset SQL Lab 연결용 가상 모델
+class SqlLabManager(models.Model):
+    """
+    DB 테이블을 만들지 않고(Admin 메뉴 생성용) 
+    Superset SQL Lab으로 연결하기 위한 가상 모델
+    """
+    class Meta:
+        managed = False  # DB에 테이블을 생성하지 않음
+        verbose_name = "SQL 관리 (Superset)"
+        verbose_name_plural = "SQL 관리 (Superset)"

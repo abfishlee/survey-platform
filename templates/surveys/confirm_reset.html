@@ -1,0 +1,7 @@
+<h2>정말로 삭제하시겠습니까?</h2>
+<p>이 작업은 되돌릴 수 없으며 모든 명부, 차수, 수집 데이터가 사라집니다.</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" style="background-color: red; color: white;">예, 모두 삭제합니다</button>
+    <a href="/">취소</a>
+</form>

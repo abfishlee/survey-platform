@@ -29,7 +29,11 @@ urlpatterns = [
 
     # 자료수집 (Collect)
     path('collect/', views.collection_list, name='collection_list'),
-    path('collect/roster/<int:roster_id>/', views.roster_data_view, name='roster_data_view'),
+    
+    path('collect/<int:survey_id>/degrees/', views.collection_degree_list, name='collection_degree_list'),
+
+    path('collect/roster/<int:roster_id>/degree/<int:degree_id>/', views.roster_data_view, name='roster_data_view'),
+
     path('data/<int:data_id>/get-survey/', views.get_survey_data, name='get_survey_data'),
     path('data/<int:data_id>/save-survey/', views.save_survey_response, name='save_survey_response'),
     
@@ -47,7 +51,7 @@ urlpatterns = [
 
     path('clear/<int:roster_id>/', views.clear_roster_data),
 
-    path('survey/<int:survey_id>/delete-all/', views.delete_survey_complete, name='delete_survey_complete'),
+    path('survey/<int:survey_id>/delete-all/', views.reset_all_survey_data, name='reset_all_survey_data'),
     path('survey/assign-records/', views.assign_records, name='assign_records'),
 
     # [추가] 7. 자료분석 화면
@@ -65,8 +69,10 @@ urlpatterns = [
     # [추가] 분석 목록 화면 (조사원이 볼 화면)
     path('survey/<int:survey_id>/analysis/list/', views.analysis_list_view, name='analysis_list_view'),
 
-  # [수정 후] - 앞에 'survey/'를 붙여서 경로를 맞춰줍니다!
+    # [수정 후] - 앞에 'survey/'를 붙여서 경로를 맞춰줍니다!
     path('survey/analysis/<int:analysis_id>/view/', views.analysis_viewer_view, name='analysis_viewer'),
     path('survey/analysis/<int:analysis_id>/json/', views.get_analysis_detail, name='get_analysis_detail'),
-    
+
+    # 신규 API 추가
+    path('api/execute-sql/', views.get_query_result, name='api_execute_sql'), 
 ]

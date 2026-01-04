@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load survey_tags %}
-
 {% load django_vite %} 
+
 {% block content %}
 <style>
     /* 리스트 및 권역 검색 스타일 */
@@ -31,14 +31,21 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'collection_list' %}">조사목록</a></li>
-            <li class="breadcrumb-item active">{{ roster.roster_name }}</li>
+            <li class="breadcrumb-item"><a href="{% url 'collection_degree_list' survey.id %}">{{ survey.survey_name }}</a></li>
+            <li class="breadcrumb-item active">{{ degree.degree_number }}차 조사</li>
         </ol>
     </nav>
 
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h3 class="mb-1"><i class="bi bi-card-checklist me-2 text-primary"></i>{{ roster.roster_name }} 수집 현황</h3>
-            <p class="text-muted small mb-0">접속 권역: <strong>{{ user_area.area_name|default:"전체" }}</strong> (조사원: {{ request.user.username }})</p>
+            <h3 class="mb-1">
+                <span class="badge bg-success me-2">{{ degree.degree_number }}차</span>
+                {{ roster.roster_name }}
+            </h3>
+            <p class="text-muted small mb-0">
+                접속 권역: <strong>{{ user_area.area_name|default:"전체" }}</strong> 
+                | 조사원: {{ request.user.username }}
+            </p>
         </div>
         <span class="badge bg-secondary px-3 py-2">총 {{ data_list|length }}건</span>
     </div>
@@ -137,15 +144,20 @@
                         <td class="small">{{ data.list_values|dict_get:h.id }}</td>
                         {% endfor %}
                         <td>
-                            <span class="badge badge-status {% if data.status == 'READY' %}bg-secondary{% else %}bg-success{% endif %}">
-                                {{ data.status }}
+                            <span class="badge badge-status {% if data.status_display == 'READY' %}bg-secondary{% else %}bg-success{% endif %}">
+                                {{ data.status_display }}
                             </span>
                         </td>
                         <td>
-                            <button class="btn btn-primary btn-sm px-3 shadow-sm" onclick="openSurveyCollector({{ data.id }}, '{{ data.respondent_id }}')">
+                            <button class="btn btn-primary btn-sm px-3 shadow-sm" 
+                                    onclick="openSurveyCollector({{ data.id }}, '{{ data.respondent_id }}', {{ degree.id }})">
                                 <i class="bi bi-pencil-square me-1"></i>입력
                             </button>
                         </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" class="text-center py-5 text-muted">표시할 데이터가 없습니다.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -174,13 +186,15 @@
 <script>
 /**
  * Vue 설문 엔진 팝업 열기 로직
+ * [수정] degreeId 인자 추가됨
  */
-async function openSurveyCollector(dataId, respondentId) {
+async function openSurveyCollector(dataId, respondentId, degreeId) {
     const modal = new bootstrap.Modal(document.getElementById('surveyCollectorModal'));
     modal.show();
 
     try {
-        const res = await fetch(`/data/${dataId}/get-survey/`);
+        // [수정] URL 쿼리 파라미터로 degree_id 전달
+        const res = await fetch(`/data/${dataId}/get-survey/?degree_id=${degreeId}`);
         const data = await res.json();
 
         if (data.status === 'error') {
@@ -189,11 +203,12 @@ async function openSurveyCollector(dataId, respondentId) {
             return;
         }
 
-        // Vue 앱으로 초기화 데이터 발송
+        // Vue 앱으로 초기화 데이터 발송 (degreeId 포함)
         window.dispatchEvent(new CustomEvent('init-survey-collector', {
             detail: {
                 dataId: dataId,
                 respondentId: respondentId,
+                degreeId: degreeId, // [중요] 저장 시 필요하므로 Vue로 전달
                 forms: data.forms,
                 editRules: data.edit_rules || [],
                 saved_warnings: data.saved_warnings || []
@@ -201,6 +216,7 @@ async function openSurveyCollector(dataId, respondentId) {
         }));
 
     } catch (e) {
+        console.error(e);
         alert("데이터 로드 중 오류가 발생했습니다.");
         modal.hide();
     }
@@ -238,9 +254,6 @@ document.addEventListener('DOMContentLoaded', function() {
     updateLv2(); updateLv3();
 });
 </script>
-
-<!-- <script type="module" src="http://127.0.0.1:3000/src/collector-main.js"></script> -->
-
 
 {% vite_hmr_client %}
 {% vite_asset 'src/collector-main.js' %}

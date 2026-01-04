@@ -8,9 +8,12 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_POST
 from .models import (
     SurveyMaster, SurveyDesign, SurveyData, SurveyRoster, 
-    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser, SurveyAnalysis
+    SurveyQuestionnaire, QuestionnaireVersion, SurveyArea, SurveyAreaUser, SurveyAnalysis,
+    SurveyDegree
     )
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
+from .superset_utils import execute_superset_sql
 
 
 # ==========================================
@@ -39,19 +42,44 @@ def clear_roster_data(request, roster_id):
     SurveyData.objects.filter(roster_id=roster_id).delete()
     return HttpResponse(f"{count}건의 데이터가 삭제되었습니다. 이제 다시 업로드하세요.")
 
-@user_passes_test(is_admin)  # 관리자만 삭제 가능하도록 권한 체크
-def delete_survey_complete(request, survey_id):
+@user_passes_test(is_admin)
+def reset_all_survey_data(request, survey_id):  # survey_id 인자를 추가했습니다.
     """
-    조사 마스터를 삭제하여 관련 모든 데이터를 일괄 삭제함
-    (SurveyDesign, SurveyRoster, SurveyQuestionnaire, SurveyData 등 자동 삭제)
+    survey_id가 0이면 시스템 내의 모든 조사 데이터를 초기화합니다.
+    그 외의 번호면 해당 조사만 삭제합니다.
+    SurveyMaster 삭제 시 CASCADE 설정에 의해 관련 데이터(Degree, Roster, Data 등)가 함께 삭제됩니다.
     """
-    survey = get_object_or_404(SurveyMaster, pk=survey_id)
-    survey_name = survey.survey_name
+    if request.method == 'POST':
+        with transaction.atomic():
+            if str(survey_id) == '0':
+                # 모든 조사 삭제
+                count = SurveyMaster.objects.all().count()
+                SurveyMaster.objects.all().delete()
+                message = f"전체 초기화 성공: {count}건의 모든 조사 프로젝트가 삭제되었습니다."
+            else:
+                # 특정 조사 하나만 삭제
+                survey = get_object_or_404(SurveyMaster, pk=survey_id)
+                survey_name = survey.survey_name
+                survey.delete()
+                message = f"삭제 성공: 조사 '{survey_name}'(ID: {survey_id})와 관련 데이터가 삭제되었습니다."
+            
+        return HttpResponse(message)
     
-    # SurveyMaster 삭제 시 CASCADE 설정에 의해 하위 데이터가 모두 삭제됨
-    survey.delete()
-    
-    return HttpResponse(f"조사 '{survey_name}'(ID: {survey_id})와 관련된 모든 명부, 조사표, 데이터, 내검 규칙이 삭제되었습니다.")
+    # GET 요청 시 확인 페이지 렌더링
+    return render(request, 'surveys/confirm_reset.html', {'survey_id': survey_id})
+
+def get_current_degree(survey):
+    return survey.degrees.filter(is_active=True).first()
+
+def check_survey_manager_permission(user, survey):
+    """
+    슈퍼유저는 무조건 통과.
+    일반 유저는 해당 SurveyMaster의 managers에 포함되어 있어야 통과.
+    """
+    if user.is_superuser:
+        return True
+    return survey.managers.filter(id=user.id).exists()
+
 # ==========================================
 # [메인/목록] 대시보드 및 프로젝트 관리
 # ==========================================
@@ -64,7 +92,14 @@ def dashboard(request):
 @user_passes_test(is_admin)
 def design_list(request):
     """통계 설계 목록 조회"""
-    surveys = SurveyMaster.objects.all()
+    user = request.user
+
+    if user.is_superuser:
+        # 슈퍼유저는 전체 조회 + 정렬
+        surveys = SurveyMaster.objects.all().order_by('survey_code')
+    else:
+        # 일반 매니저는 자신이 배정된 조사만 필터링 + 정렬
+        surveys = SurveyMaster.objects.filter(managers=user).order_by('survey_code')
     return render(request, 'surveys/design_list.html', {'surveys': surveys})
 
 
@@ -367,12 +402,9 @@ def assign_records(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
-@user_passes_test(is_admin)
 def survey_assignment(request, survey_id):
     """
     [4단계: 업무량 배정] 통합 뷰
-    1. 탭 1: 사용자 <-> 권역 배정 (POST 처리 포함)
-    2. 탭 2: 사용자 <-> 명부 레코드 배정 (검색 및 필터링 포함)
     """
     survey = get_object_or_404(SurveyMaster, pk=survey_id)
     user = request.user
@@ -384,7 +416,6 @@ def survey_assignment(request, survey_id):
         return HttpResponse("권역 관리 권한이 없습니다.", status=403)
 
     # 2. 관리 범위(하위 권역) 결정
-    # 이미지의 코드 체계(10, 1010...)를 활용하여 상위 코드로 시작하는 모든 하위 권역 필터링
     if user.is_superuser:
         managed_areas = SurveyArea.objects.filter(survey=survey)
     else:
@@ -427,7 +458,7 @@ def survey_assignment(request, survey_id):
     assignment_filter = request.GET.get('assignment_filter', 'ALL')
 
     # 탭 1용: 조사원 풀 및 현재 권역 배정 현황
-    all_users = User.objects.filter(is_active=True).exclude(is_superuser=True)
+    all_users = survey.managers.filter(is_active=True)
     area_assignments = SurveyAreaUser.objects.filter(
         survey=survey, 
         area_id__in=managed_area_ids
@@ -466,7 +497,7 @@ def survey_assignment(request, survey_id):
         # 검색 상태 유지를 위해 다시 전달
         'search_surveyor': search_surveyor,
         'assignment_filter': assignment_filter
-    })
+    }) 
 
 @user_passes_test(is_admin)
 def remove_survey_assignment(request, survey_id):
@@ -520,73 +551,130 @@ def survey_edit_rule_design(request, survey_id):
 @login_required
 def collection_list(request):
     """조사원이 접근 가능한 조사 목록 조회"""
-    return render(request, 'surveys/collection_survey_list.html', {'surveys': SurveyMaster.objects.all()})
+    user = request.user
+    
+    # 권한 필터링: 슈퍼유저는 전체, 일반 유저는 배정된 조사만
+    if user.is_superuser:
+        surveys = SurveyMaster.objects.all().order_by('survey_code')
+    else:
+        surveys = SurveyMaster.objects.filter(managers=user).order_by('survey_code')
+        
+    return render(request, 'surveys/collection_survey_list.html', {'surveys': surveys})
 
 @login_required
-def roster_data_view(request, roster_id):
+def collection_degree_list(request, survey_id):
+    """[화면] 차수 선택 (Survey -> Degrees)"""
+    survey = get_object_or_404(SurveyMaster, pk=survey_id)
+    
+    # 보안 체크
+    if not check_survey_manager_permission(request.user, survey):
+         return HttpResponse("조회 권한이 없습니다.", status=403)
+
+    # 해당 조사의 모든 차수 가져오기
+    degrees = survey.degrees.all().order_by('-degree_number')
+    
+    # 해당 조사의 명부(Roster) 가져오기 (보통 1개지만, 여러 개일 수 있음)
+    rosters = survey.rosters.all()
+
+    return render(request, 'surveys/collection_degree_list.html', {
+        'survey': survey,
+        'degrees': degrees,
+        'rosters': rosters
+    })
+
+# surveys/views.py
+
+@login_required
+def roster_data_view(request, roster_id, degree_id):
     """
-    명부 데이터 리스트 조회
-    - LV1/LV2: 권역 내 전체 명부 조회 및 조사원 배정 권한
-    - LV3: 권역 내 본인에게 배정된 명부만 조회
+    [화면] 명부 리스트 조회 (Master-Detail 구조 적용)
+    1. DB에서는 '차수가 없는(Null)' 원본 명부를 가져옵니다.
+    2. '현재 차수(degree_id)'에 해당하는 응답 데이터가 있는지 확인하여 상태(status)를 매핑합니다.
     """
     roster = get_object_or_404(SurveyRoster, pk=roster_id)
+    degree = get_object_or_404(SurveyDegree, pk=degree_id)
     survey = roster.survey
     user = request.user
     
-    # 1. 사용자의 권역 배정 정보 및 레벨 확인
+    # 1. 권한 체크 (사용자의 권역 배정 확인)
     mapping = SurveyAreaUser.objects.filter(survey=survey, user=user).select_related('area').first()
     if not user.is_superuser and not mapping:
-        return HttpResponse("접근 권한이 없습니다.", status=403)
+        return HttpResponse("이 조사에 대한 권역 배정 정보가 없습니다.", status=403)
 
-    # 2. 명부 설계에 'area_code'가 포함되어 있는지 확인
+    # 2. 명부 설계 설정 로드
     config = roster.mapping_config if isinstance(roster.mapping_config, list) else []
     is_area_design_exists = any(c.get('id') == 'area_code' for c in config)
-    
-    # 3. 기본 데이터 쿼리셋
-    data_list = roster.data_records.all().select_related('area', 'assigned_user').order_by('id')
 
-    # 4. 사용자의 관리 범위 설정 (슈퍼유저는 전체, 일반은 본인 권역 하위)
+    # 3. [Master] 원본 명부 데이터 가져오기 (degree가 없는 것)
+    master_list = SurveyData.objects.filter(
+        roster=roster, 
+        degree__isnull=True 
+    ).select_related('area', 'assigned_user').order_by('id')
+
+    # 4. [Transaction] 현재 차수의 응답 데이터 상태 조회 (최적화)
+    #    (현재 차수에 이미 저장된 데이터들의 상태를 딕셔너리로 가져옴)
+    response_status_map = {}
+    responses = SurveyData.objects.filter(roster=roster, degree=degree).values('respondent_id', 'status')
+    for res in responses:
+        response_status_map[res['respondent_id']] = res['status']
+
+    # 5. 권역 필터링 (원본 명부 기준)
     if user.is_superuser:
         base_area_code = ""
-        user_level = 0 # 전체 관리자
+        user_level = 0
     else:
         base_area_code = mapping.area.area_code
         user_level = mapping.area.level
-        # 기본 필터링 (내 권역 하위만)
-        data_list = data_list.filter(area__area_code__startswith=base_area_code)
+        master_list = master_list.filter(area__area_code__startswith=base_area_code)
         if not mapping.is_manager:
-             data_list = data_list.filter(assigned_user=user)
+             master_list = master_list.filter(assigned_user=user)
 
-    # 5. 검색 파라미터 처리 (계층형 검색)
+    # 6. 검색 파라미터 처리 (계층형 권역 검색)
     sel_lv1 = request.GET.get('sel_lv1', '')
     sel_lv2 = request.GET.get('sel_lv2', '')
     sel_lv3 = request.GET.get('sel_lv3', '')
 
-    if sel_lv3: # 사무소 선택 시
-        data_list = data_list.filter(area_id=sel_lv3)
-    elif sel_lv2: # 지방청 선택 시
+    if sel_lv3: 
+        master_list = master_list.filter(area_id=sel_lv3)
+    elif sel_lv2: 
         target_area = get_object_or_404(SurveyArea, pk=sel_lv2)
-        data_list = data_list.filter(area__area_code__startswith=target_area.area_code)
-    elif sel_lv1: # 본청 선택 시
+        master_list = master_list.filter(area__area_code__startswith=target_area.area_code)
+    elif sel_lv1: 
         target_area = get_object_or_404(SurveyArea, pk=sel_lv1)
-        data_list = data_list.filter(area__area_code__startswith=target_area.area_code)
+        master_list = master_list.filter(area__area_code__startswith=target_area.area_code)
 
-    # 6. 콤보박스용 데이터 준비 (내 레벨 이하만 조회)
+    # 7. 일반 검색 필드 처리 (이름, 주소 등)
+    search_fields = [c for c in config if c.get('is_search') and c.get('id') != 'area_code']
+    for field in search_fields:
+        val = request.GET.get(field['id'])
+        if val:
+             master_list = master_list.filter(list_values__contains={field['id']: val})
+
+    # 8. [Display Logic] 리스트 데이터 가공 (상태값 주입)
+    #    QuerySet은 순회가 시작될 때 평가되므로, Python 리스트로 변환하며 속성 추가
+    display_list = []
+    for item in master_list:
+        # 이 사람의 현재 차수 상태가 있으면 그걸 쓰고, 없으면 'READY'
+        # (주의: 템플릿에서는 item.status_display 를 사용해야 함)
+        item.status_display = response_status_map.get(item.respondent_id, 'READY')
+        display_list.append(item)
+
+    # 9. 콤보박스용 데이터 준비
     all_managed_areas = SurveyArea.objects.filter(survey=survey, area_code__startswith=base_area_code)
     
     context = {
         'roster': roster,
+        'survey': survey,
+        'degree': degree,  # [중요] 현재 차수 정보 전달
         'headers': [c for c in config if c.get('show_in_list')],
-        'search_fields': [c for c in config if c.get('is_search') and c.get('id') != 'area_code'],
-        'data_list': data_list,
+        'search_fields': search_fields,
+        'data_list': display_list, # 가공된 리스트 전달
         'user_area': mapping.area if mapping else None,
         'user_level': user_level,
         'is_area_design_exists': is_area_design_exists,
-        # 콤보박스용
         'lv1_list': all_managed_areas.filter(level=1),
         'lv2_list': all_managed_areas.filter(level=2),
         'lv3_list': all_managed_areas.filter(level=3),
-        # 선택 상태 유지
         'sel_lv1': sel_lv1, 'sel_lv2': sel_lv2, 'sel_lv3': sel_lv3,
     }
     return render(request, 'surveys/data_entry_list.html', context)
@@ -594,103 +682,71 @@ def roster_data_view(request, roster_id):
 @login_required
 def get_survey_data(request, data_id):
     """
-    입력 팝업용 데이터 조회 API (중복 제거 및 기능 통합본)
-    조사대상 정보, 확정된 조사표 설계(디자인), 기존 저장 답변, 내검 규칙을 한 번에 반환함.
+    [API] 입력 팝업용 데이터 조회
+    - data_id: 원본 명부(Master)의 ID
+    - request.GET['degree_id']: 현재 입력하려는 차수 ID
+    - 기능: 원본 명부 정보 + 해당 차수의 기존 답변(있으면) 병합 반환
     """
-    # 1. 기초 데이터 로드
-    data_record = get_object_or_404(SurveyData, pk=data_id)
-    roster = data_record.roster
+    # 1. 파라미터 확인 및 원본 데이터 로드
+    degree_id = request.GET.get('degree_id')
+    if not degree_id:
+        return JsonResponse({'status': 'error', 'message': '차수 정보가 누락되었습니다.'}, status=400)
+
+    master_record = get_object_or_404(SurveyData, pk=data_id)
+    roster = master_record.roster
     survey_master = roster.survey
-    
-    # 2. 해당 조사의 설계 정보에서 내검(Editing) 규칙 추출
+    degree = get_object_or_404(SurveyDegree, pk=degree_id)
+
+    # 2. [핵심] 현재 차수에 저장된 데이터가 있는지 확인
+    #    (원본 명부와 respondent_id가 같고, degree가 일치하는 데이터)
+    response_record = SurveyData.objects.filter(
+        roster=roster,
+        degree=degree,
+        respondent_id=master_record.respondent_id
+    ).first()
+
+    # 답변 데이터가 있으면 로드, 없으면 빈 값
+    current_values = response_record.survey_values if response_record else {}
+    saved_warnings = current_values.get('_warnings', []) if isinstance(current_values, dict) else []
+
+    # 3. 조사표 설계 및 내검 규칙 로드
     design = getattr(survey_master, 'design', None)
     edit_rules = design.edit_rules if design else []
-
-    # 3. 연결된 조사표 존재 여부 확인
+    
     questionnaires = roster.questionnaires.all()
     if not questionnaires.exists():
         return JsonResponse({'status': 'error', 'message': '연결된 조사표가 없습니다.'}, status=404)
 
-    # 4. 조사표별 최신 확정 버전 및 저장된 답변 데이터 구성
+    # 4. 조사표별 최신 확정 버전 구성
     survey_forms = []
     for q in questionnaires:
-        # 각 조사표의 '확정된(is_confirmed=True)' 버전 중 가장 최신 것 조회
         v = q.versions.filter(is_confirmed=True).order_by('-version_number').first()
-        
         if v:
-            # 해당 버전의 고유 ID(ver_form_id)를 키로 사용하여 저장된 답변 추출
-            # 예: {"S00001-V1": {"q1": "1", "q2": "서울"}}
-            saved_values = data_record.survey_values.get(v.ver_form_id, {})
-            
-            survey_forms.append({
-                'q_id': q.id,                 # DB Primary Key
-                'form_id': q.form_id,         # 조사표 기본 ID (예: S00001)
-                'ver_form_id': v.ver_form_id, # 버전별 고유 ID (예: S00001-V1)
-                'form_name': q.form_name,
-                'design_data': v.design_data, # 조사표 설계 JSON
-                'saved_values': saved_values  # 기존 입력 답변
-            })
-
-    # 5. 확정된 버전이 하나도 없는 경우 예외 처리
-    if not survey_forms:
-        return JsonResponse({'status': 'error', 'message': '확정된 조사표 버전이 하나도 없습니다.'}, status=404)
-
-    # 6. 저장된 WARNING 정보 추출 (있는 경우)
-    saved_warnings = []
-    if isinstance(data_record.survey_values, dict) and '_warnings' in data_record.survey_values:
-        saved_warnings = data_record.survey_values.get('_warnings', [])
-        # survey_values에서 _warnings 제거 (실제 답변 데이터만 전달)
-        for form in survey_forms:
-            if form['ver_form_id'] in data_record.survey_values:
-                form_values = data_record.survey_values[form['ver_form_id']]
-                if isinstance(form_values, dict) and '_warnings' in form_values:
-                    # 각 form의 saved_values에서도 _warnings 제거
-                    pass  # 이미 saved_values는 별도로 추출했으므로 문제없음
-
-    # 7. 모든 기능이 통합된 최종 데이터 반환
-    return JsonResponse({
-        'status': 'success',
-        'roster_id': roster.roster_code,      # 명부 코드 (예: N00001)
-        'respondent_id': data_record.respondent_id,
-        'survey_year': survey_master.survey_year,
-        'survey_degree': survey_master.survey_degree,
-        'forms': survey_forms,                # 조사표 정보 리스트
-        'edit_rules': edit_rules,             # 내검 규칙 리스트
-        'saved_warnings': saved_warnings      # 저장된 WARNING 정보
-    })
-
-    # 3. 조사표별 확정 버전 데이터 구성
-    survey_forms = []
-    for q in questionnaires:
-        # 각 조사표의 '확정된(is_confirmed=True)' 버전 중 가장 최신 것 조회
-        v = q.versions.filter(is_confirmed=True).order_by('-version_number').first()
-        
-        if v:
-            # 해당 버전의 고유 ID(ver_form_id)를 키로 사용하여 저장된 답변 추출
-            # 데이터 구조 예: data_record.survey_values = {"S00001-V1": {...}, "S00002-V1": {...}}
-            saved_values = data_record.survey_values.get(v.ver_form_id, {})
+            # 해당 버전의 저장된 값 추출 (없으면 빈 딕셔너리)
+            form_values = current_values.get(v.ver_form_id, {})
             
             survey_forms.append({
                 'q_id': q.id,
-                'form_id': q.form_id,         # 조사표 기본 ID (S00001)
-                'ver_form_id': v.ver_form_id, # 버전별 고유 ID (S00001-V1)
+                'form_id': q.form_id,
+                'ver_form_id': v.ver_form_id,
                 'form_name': q.form_name,
                 'design_data': v.design_data,
-                'saved_values': saved_values
+                'saved_values': form_values
             })
 
-    # 4. 확정된 버전이 하나도 없는 경우 처리
     if not survey_forms:
         return JsonResponse({'status': 'error', 'message': '확정된 조사표 버전이 없습니다.'}, status=404)
 
-    # 5. 최종 데이터 반환 (명부ID, 레코드ID, 차수 등 포함)
     return JsonResponse({
         'status': 'success',
         'roster_id': roster.roster_code,
-        'respondent_id': data_record.respondent_id,
+        'respondent_id': master_record.respondent_id,
         'survey_year': survey_master.survey_year,
-        'survey_degree': survey_master.survey_degree,
-        'forms': survey_forms  # 여러 개의 조사표 데이터가 들어있는 리스트
+        'survey_degree': degree.degree_number, # 현재 차수
+        'degree_title': degree.degree_title,
+        'forms': survey_forms,
+        'edit_rules': edit_rules,
+        'saved_warnings': saved_warnings
     })
 
 def evaluate_edit_rule(condition, answers, design_data_map, target_form_id):
@@ -940,18 +996,33 @@ def evaluate_edit_rule(condition, answers, design_data_map, target_form_id):
 
 @login_required
 def save_survey_response(request, data_id):
-    """조사 답변 저장 API (내검 규칙 검증 포함)"""
+    """
+    [API] 조사 답변 저장 (내검 규칙 검증 포함)
+    - 수정사항: Warning 발생 시 condition, target_field 정보를 누락 없이 저장하도록 개선
+    """
     if request.method == 'POST':
-        data_record = get_object_or_404(SurveyData, pk=data_id)
-        roster = data_record.roster
+        # 1. 파라미터 및 원본 데이터 로드
+        degree_id = request.GET.get('degree_id')
+        if not degree_id:
+             return JsonResponse({'status': 'error', 'message': '차수 정보가 누락되었습니다.'}, status=400)
+
+        master_record = get_object_or_404(SurveyData, pk=data_id)
+        degree = get_object_or_404(SurveyDegree, pk=degree_id)
+        
+        roster = master_record.roster
         survey_master = roster.survey
         design = getattr(survey_master, 'design', None)
         edit_rules = design.edit_rules if design else []
         
-        # 저장할 답변 데이터
-        answers = json.loads(request.body).get('answers', {})
-        
-        # 조사표별 설계 데이터 맵핑 생성 (테이블 구조 확인용)
+        # 2. 클라이언트가 보낸 답변 데이터 파싱
+        try:
+            request_data = json.loads(request.body)
+            answers = request_data.get('answers', {})
+            force_save = request_data.get('force_save', False)
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': '잘못된 JSON 형식입니다.'}, status=400)
+
+        # 3. 조사표 설계 데이터 맵핑
         questionnaires = roster.questionnaires.all()
         design_data_map = {}
         for q in questionnaires:
@@ -959,109 +1030,110 @@ def save_survey_response(request, data_id):
             if v:
                 design_data_map[q.form_id] = v.design_data
         
-        # 내검 규칙 검증
+        # 4. 내검 규칙 검증
         errors = []
-        warnings = []
+        warnings = [] # 여기에 상세 객체를 담습니다.
         
         for rule in edit_rules:
-            # 대상 조사표 필터링
             target_form_id = rule.get('target_form_id', '')
-            
-            # 해당 조사표의 답변 데이터만 확인
             form_answers = {}
+            
+            # 대상 조사표 데이터 추출
             if target_form_id:
-                # 특정 조사표에만 적용
                 for ver_form_id, form_data in answers.items():
-                    # ver_form_id에서 form_id 추출 (예: "S00001-V1" -> "S00001")
                     form_id = ver_form_id.split('-')[0] if '-' in ver_form_id else ver_form_id
                     if form_id == target_form_id or target_form_id in ver_form_id:
                         form_answers[ver_form_id] = form_data
             else:
-                # target_form_id가 비어있으면 모든 조사표에 적용
                 form_answers = answers
             
-            if not form_answers:
-                continue
+            if not form_answers: continue
             
             condition = rule.get('condition', '')
-            if not condition:
-                continue
+            if not condition: continue
             
-            # 조건식 평가 (조건식이 True면 위반으로 처리)
+            # 조건식 평가
             condition_result = evaluate_edit_rule(condition, form_answers, design_data_map, target_form_id)
             
-            # 조건식이 True면 위반 (내검 규칙은 조건식이 만족되면 위반)
             if condition_result:
-                message = rule.get('message', f"규칙 {rule.get('rule_id', '')} 위반")
-                severity = rule.get('severity', 'ERROR')
-                
-                if severity == 'ERROR':
-                    errors.append(message)
+                # [핵심 수정] 단순 문자열이 아니라, 상세 정보를 담은 딕셔너리 생성
+                violation_info = {
+                    'rule_id': rule.get('rule_id'),
+                    'message': rule.get('message', f"규칙 {rule.get('rule_id')} 위반"),
+                    'condition': condition,          # [필수] 이동을 위해 꼭 필요
+                    'target_field': rule.get('target_field'), # [필수] 이동을 위해 꼭 필요
+                    'severity': rule.get('severity', 'ERROR')
+                }
+
+                if violation_info['severity'] == 'ERROR':
+                    # 에러는 메시지만 있어도 됨 (저장 불가라 이동 불필요)
+                    errors.append(violation_info['message'])
                 else:
-                    warnings.append(message)
+                    # 경고는 이동 기능이 필요하므로 객체 전체 저장
+                    warnings.append(violation_info)
         
-        # ERROR가 있으면 저장 거부
+        # ERROR 발생 시 저장 중단
         if errors:
+            # 경고 메시지만 추출해서 전달
+            warning_messages = [w['message'] for w in warnings]
             return JsonResponse({
                 'status': 'error',
                 'message': '내검 규칙 위반으로 저장할 수 없습니다.',
                 'errors': errors,
-                'warnings': warnings
+                'warnings': warning_messages
             }, status=400)
         
-        # WARNING만 있으면 사용자 확인 후 저장
-        if warnings:
-            # force_save 파라미터가 있으면 확인 후 저장
-            request_data = json.loads(request.body)
-            force_save = request_data.get('force_save', False)
-            
-            if force_save:
-                # 사용자 확인 후 저장
-                # WARNING 정보를 메타데이터로 저장 (조건식과 대상 필드 정보 포함)
-                warning_metadata = []
-                for rule in edit_rules:
-                    if rule.get('severity') == 'WARNING':
-                        condition_result = evaluate_edit_rule(
-                            rule.get('condition', ''), 
-                            {k: v for k, v in answers.items() if k != '_warnings'}, 
-                            design_data_map, 
-                            rule.get('target_form_id', '')
-                        )
-                        if condition_result:
-                            warning_metadata.append({
-                                'rule_id': rule.get('rule_id'),
-                                'message': rule.get('message'),
-                                'condition': rule.get('condition'),
-                                'target_field': rule.get('target_field'),
-                                'target_form_id': rule.get('target_form_id')
-                            })
-                
-                # WARNING 메타데이터를 survey_values에 저장 (최상위 레벨)
-                answers_with_warnings = dict(answers)
-                answers_with_warnings['_warnings'] = warning_metadata
-                
-                data_record.survey_values = answers_with_warnings
-                data_record.status = 'ING'
-                data_record.save()
-                return JsonResponse({
-                    'status': 'success',
-                    'warnings': warnings,
-                    'message': '경고가 있지만 저장되었습니다.'
-                })
-            else:
-                # WARNING만 있을 때는 저장하지 않고 확인 요청
-                return JsonResponse({
-                    'status': 'warning',
-                    'warnings': warnings,
-                    'message': '경고가 있습니다. 저장하시겠습니까?'
-                }, status=200)
+        # WARNING 발생 시 확인 요청 (force_save가 없으면)
+        if warnings and not force_save:
+            # 클라이언트에게 상세 정보(condition 포함)를 그대로 전달
+            # 프론트엔드에서는 warnings 배열을 받아서 메시지를 띄움
+            warning_messages = [w['message'] for w in warnings]
+            return JsonResponse({
+                'status': 'warning',
+                'warnings': warning_messages,
+                'message': '경고가 있습니다. 저장하시겠습니까?'
+            }, status=200)
         
-        # 검증 통과 시 저장
-        data_record.survey_values = answers
-        data_record.status = 'ING'
-        data_record.save()
-        return JsonResponse({'status': 'success'})
+        # 5. [핵심] 차수별 데이터 저장 (Get or Create)
+        try:
+            with transaction.atomic():
+                response_record, created = SurveyData.objects.get_or_create(
+                    roster=roster,
+                    degree=degree,
+                    respondent_id=master_record.respondent_id,
+                    defaults={
+                        'area': master_record.area,
+                        'assigned_user': master_record.assigned_user,
+                        'list_values': master_record.list_values,
+                        'status': 'ING'
+                    }
+                )
+                
+                # [수정] WARNING 메타데이터 저장 시에도 condition 정보 포함!
+                # 이전에 이 부분이 {'message': ...} 만 저장해서 문제였음
+                answers_to_save = dict(answers)
+                if warnings:
+                    answers_to_save['_warnings'] = warnings # 전체 객체 리스트 저장
+                else:
+                    # 경고가 없으면 기존 경고 삭제
+                    if '_warnings' in answers_to_save:
+                        del answers_to_save['_warnings']
 
+                # 데이터 업데이트
+                response_record.survey_values = answers_to_save
+                response_record.status = 'ING'
+                response_record.save()
+                
+            return JsonResponse({
+                'status': 'success',
+                # 저장 완료 후에도 이동 기능을 위해 경고 정보를 다시 내려줌
+                'warnings': warnings 
+            })
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
 # [화면] 7. 자료분석 페이지 (WebDataRocks를 띄울 껍데기)
 def collection_analysis_view(request, survey_id):
@@ -1075,14 +1147,15 @@ def survey_pivot_data_api(request, survey_id):
     # 해당 조사의 모든 데이터 조회 (최적화를 위해 select_related 사용)
     queryset = SurveyData.objects.filter(
         roster__survey_id=survey_id
-    ).select_related('area', 'assigned_user', 'roster')
-
+    ).select_related('area', 'assigned_user', 'roster', 'degree')
     data_list = []
     
     for record in queryset:
         # 기본 정보
         flat_data = {
             "ID": record.respondent_id,
+            "차수": f"{record.degree.degree_number}차" if record.degree else "미지정",
+            "차수명": record.degree.degree_title if record.degree else "",
             "권역": record.area.area_name if record.area else "미지정",
             "조사원": record.assigned_user.username if record.assigned_user else "미배정",
             "상태": record.status, 
@@ -1179,3 +1252,43 @@ def analysis_viewer_view(request, analysis_id):
          return HttpResponse("조회 권한이 없습니다.", status=403)
         
     return render(request, 'surveys/analysis_viewer.html', {'analysis': analysis})
+
+# surveys/views.py
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from .superset_utils import execute_superset_sql
+import json
+
+@csrf_exempt  # API 테스트 편의를 위해 CSRF 예외 처리 (실제 개발시엔 토큰 처리 필요)
+def get_query_result(request):
+    """
+    [API] 클라이언트가 요청한 SQL을 Superset에서 실행하고 결과를 반환
+    """
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            # 클라이언트가 SQL을 직접 보낸다고 가정 (보안상 위험할 수 있으니 나중엔 저장된 SQL ID로 변경 권장)
+            sql_query = body.get('sql') 
+            
+            if not sql_query:
+                return JsonResponse({'status': 'error', 'message': 'SQL 문이 없습니다.'}, status=400)
+
+            # 유틸리티 함수 호출
+            # database_id=1 은 Superset의 'examples' DB입니다. (PostgreSQL 연결한 DB ID로 변경 필요)
+            result = execute_superset_sql(sql_query, database_id=2)
+            
+            if 'error' in result:
+                return JsonResponse({'status': 'error', 'message': result['error']}, status=500)
+            
+            # Superset 결과 구조에서 실제 데이터 추출
+            # 보통 result['data'] 에 데이터가 들어있음
+            return JsonResponse({
+                'status': 'success',
+                'data': result.get('data', []),
+                'columns': result.get('columns', [])
+            })
+            
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    
+    return JsonResponse({'status': 'error', 'message': 'POST method required'}, status=405)

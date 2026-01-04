@@ -45,7 +45,9 @@ jobs:
             # 2. Django 가상환경 및 라이브러리 설치
             source venv/bin/activate
             pip install -r requirements.txt
-            python manage.py migrate
+            # [중요 변경점] 개발/운영 DB가 동일하므로 배포 시 migrate 자동 실행 중지
+            # 로컬에서 이미 DB를 변경했으므로, 서버에서는 수행하지 않음.
+            # python manage.py migrate  <-- 주석 처리됨
 
             # 3. Django 정적 파일 수집
             echo "--- 정적 파일 수집(collectstatic) 시작 ---"

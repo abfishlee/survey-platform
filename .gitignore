@@ -6,6 +6,7 @@
 env/
 venv/
 local_settings.py
+setting.py
 
 # ------------------------------------------------
 # 2. Python / Django 관련
